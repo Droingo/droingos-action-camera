@@ -214,10 +214,5 @@ public final class ClientGameEvents {
         }
     }
 
-    @SubscribeEvent
-    public static void onRenderGui(RenderGuiEvent.Pre event) {
-        if (ActionCameraClientState.isViewingCamera()) {
-            event.setCanceled(true);
-        }
-    }
+
 }
