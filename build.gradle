@@ -26,6 +26,17 @@ sourceSets.main.resources {
 
 repositories {
     mavenCentral()
+
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = "https://maven.ryanhcode.dev/releases"
+            }
+        }
+        filter {
+            includeGroup("dev.ryanhcode.sable-companion")
+        }
+    }
 }
 
 neoForge {
@@ -74,6 +85,14 @@ neoForge {
             sourceSet(sourceSets.main)
         }
     }
+}
+
+dependencies {
+    jarJar(api("dev.ryanhcode.sable-companion:sable-companion-common-${project.minecraft_version}") {
+        version {
+            prefer(project.sable_companion_version)
+        }
+    })
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {

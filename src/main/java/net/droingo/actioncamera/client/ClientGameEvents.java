@@ -1,5 +1,6 @@
 package net.droingo.actioncamera.client;
 
+import dev.ryanhcode.sable.companion.SableCompanion;
 import net.droingo.actioncamera.DroingoActionCamera;
 import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.client.Minecraft;
@@ -12,18 +13,20 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @EventBusSubscriber(
         modid = DroingoActionCamera.MOD_ID,
@@ -31,12 +34,14 @@ import java.util.List;
 )
 public final class ClientGameEvents {
     /*
-     * How far C-cycling searches for loaded camera block entities.
+     * Normal-world camera discovery range.
      *
-     * 10 chunks = 160 blocks in every horizontal direction.
-     * This is a good prototype range and avoids scanning every block manually.
+     * Sable plot cameras may be far outside this chunk range, so we also keep
+     * KNOWN_CAMERAS for cameras that were looked at/activated before.
      */
     private static final int CAMERA_CYCLE_CHUNK_RADIUS = 10;
+
+    private static final Set<BlockPos> KNOWN_CAMERAS = new LinkedHashSet<>();
 
     private ClientGameEvents() {
     }
@@ -63,39 +68,57 @@ public final class ClientGameEvents {
                 return;
             }
 
+            BlockPos lookedAtCamera = getLookedAtCameraPos(minecraft);
+            if (lookedAtCamera != null) {
+                rememberCamera(lookedAtCamera);
+            }
+
             List<BlockPos> cameras = collectLoadedCameraPositions(minecraft);
+
+            /*
+             * If not already viewing, prefer the camera the player is looking at.
+             * This matters for Sable because the camera can be in a far-away plot
+             * even though the visible block is right in front of you.
+             */
+            if (!ActionCameraClientState.isViewingCamera()) {
+                if (lookedAtCamera != null) {
+                    ActionCameraClientState.startViewing(lookedAtCamera);
+                    return;
+                }
+
+                if (cameras.isEmpty()) {
+                    minecraft.player.displayClientMessage(Component.literal("No loaded Action Cameras nearby"), true);
+                    return;
+                }
+
+                ActionCameraClientState.startViewing(cameras.get(0));
+                return;
+            }
+
+            /*
+             * Already viewing:
+             * C cycles to the next loaded/known camera.
+             * Shift exits.
+             */
+            BlockPos current = ActionCameraClientState.getActiveCameraPos();
+            if (current != null) {
+                rememberCamera(current);
+            }
 
             if (cameras.isEmpty()) {
                 minecraft.player.displayClientMessage(Component.literal("No loaded Action Cameras nearby"), true);
                 return;
             }
 
-            /*
-             * If not already viewing, prefer the camera the player is looking at.
-             * If not looking at one, use the nearest loaded camera.
-             */
-            if (!ActionCameraClientState.isViewingCamera()) {
-                BlockPos lookedAtCamera = getLookedAtCameraPos(minecraft);
-                if (lookedAtCamera != null && cameras.contains(lookedAtCamera)) {
-                    ActionCameraClientState.startViewing(lookedAtCamera);
-                    return;
-                }
-
-                ActionCameraClientState.startViewing(cameras.getFirst());
-                return;
-            }
-
-            /*
-             * Already viewing:
-             * C cycles to the next loaded camera instead of exiting.
-             * Shift exits.
-             */
-            BlockPos current = ActionCameraClientState.getActiveCameraPos();
             int currentIndex = current == null ? -1 : cameras.indexOf(current);
             int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % cameras.size();
 
             ActionCameraClientState.startViewing(cameras.get(nextIndex));
         }
+    }
+
+    private static void rememberCamera(BlockPos pos) {
+        KNOWN_CAMERAS.add(pos.immutable());
     }
 
     private static BlockPos getLookedAtCameraPos(Minecraft minecraft) {
@@ -117,12 +140,21 @@ public final class ClientGameEvents {
     }
 
     private static List<BlockPos> collectLoadedCameraPositions(Minecraft minecraft) {
-        List<BlockPos> cameras = new ArrayList<>();
+        Set<BlockPos> cameraSet = new LinkedHashSet<>();
 
         if (minecraft.level == null || minecraft.player == null) {
-            return cameras;
+            return new ArrayList<>();
         }
 
+        /*
+         * Keep known cameras first.
+         * Invalid/unloaded ones get filtered out below.
+         */
+        cameraSet.addAll(KNOWN_CAMERAS);
+
+        /*
+         * Discover normal-world cameras around the player.
+         */
         ChunkPos playerChunk = new ChunkPos(minecraft.player.blockPosition());
 
         for (int chunkX = playerChunk.x - CAMERA_CYCLE_CHUNK_RADIUS; chunkX <= playerChunk.x + CAMERA_CYCLE_CHUNK_RADIUS; chunkX++) {
@@ -135,15 +167,37 @@ public final class ClientGameEvents {
 
                 for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
                     if (blockEntity instanceof ActionCameraBlockEntity) {
-                        cameras.add(blockEntity.getBlockPos().immutable());
+                        cameraSet.add(blockEntity.getBlockPos().immutable());
                     }
                 }
             }
         }
 
+        /*
+         * Filter to cameras that are actually loaded and still valid.
+         * This keeps stale known cameras from breaking cycling after chunks unload.
+         */
+        cameraSet.removeIf(pos -> {
+            if (!minecraft.level.isLoaded(pos)) {
+                return true;
+            }
+
+            return !(minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity);
+        });
+
+        List<BlockPos> cameras = new ArrayList<>(cameraSet);
+        Vec3 playerPos = minecraft.player.position();
+
         cameras.sort(Comparator.comparingDouble(pos ->
-                pos.distSqr(minecraft.player.blockPosition())
+                SableCompanion.INSTANCE.distanceSquaredWithSubLevels(
+                        minecraft.level,
+                        Vec3.atCenterOf(pos),
+                        playerPos
+                )
         ));
+
+        KNOWN_CAMERAS.clear();
+        KNOWN_CAMERAS.addAll(cameras);
 
         return cameras;
     }
@@ -166,6 +220,7 @@ public final class ClientGameEvents {
         BlockPos pos = event.getPos();
 
         if (minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity) {
+            rememberCamera(pos);
             ActionCameraClientState.startEditing(pos);
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
@@ -213,6 +268,4 @@ public final class ClientGameEvents {
             event.setCanceled(true);
         }
     }
-
-
 }
