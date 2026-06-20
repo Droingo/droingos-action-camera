@@ -7,7 +7,8 @@
     "CameraAccessor",
     "CameraMixin",
     "MouseHandlerMixin",
-    "GameRendererMixin"
+    "GameRendererMixin",
+    "SoundManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

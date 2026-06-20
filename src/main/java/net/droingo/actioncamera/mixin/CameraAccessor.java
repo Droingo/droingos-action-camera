@@ -34,13 +34,9 @@ public interface CameraAccessor {
     @Accessor("left")
     Vector3f droingoActionCamera$getLeft();
 
-    /*
-     * Important:
-     * Vanilla first-person camera hides the local player.
-     *
-     * When Action Camera is active, we set detached=true so Minecraft treats
-     * this as a detached camera and still renders the player body in the world.
-     */
+    @Accessor("detached")
+    boolean droingoActionCamera$isDetached();
+
     @Accessor("detached")
     void droingoActionCamera$setDetached(boolean detached);
 }

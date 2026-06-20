@@ -79,9 +79,9 @@ public final class ActionCameraBlockEntity extends BlockEntity {
             float smoothing,
             String cameraName
     ) {
-        this.offsetX = Mth.clamp(offsetX, -32.0D, 32.0D);
-        this.offsetY = Mth.clamp(offsetY, -32.0D, 32.0D);
-        this.offsetZ = Mth.clamp(offsetZ, -32.0D, 32.0D);
+        this.offsetX = Mth.clamp(offsetX, -0.5D, 0.5D);
+        this.offsetY = Mth.clamp(offsetY, -0.5D, 0.5D);
+        this.offsetZ = Mth.clamp(offsetZ, -0.5D, 0.5D);
 
         this.yawOffset = Mth.wrapDegrees(yawOffset);
         this.pitchOffset = Mth.clamp(pitchOffset, -89.0F, 89.0F);

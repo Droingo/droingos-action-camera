@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 public final class ActionCameraClientState {
     private enum Mode {
@@ -44,6 +45,19 @@ public final class ActionCameraClientState {
     private static ActionCameraPose smoothedPose;
     private static ActionCameraPose lastAppliedPose;
 
+    /*
+     * Audio fix:
+     *
+     * The visual Camera object is overwritten by the Action Camera.
+     * Minecraft's sound manager also reads that Camera object for listener
+     * position/orientation, which can leave OpenAL stuck sideways after exit.
+     *
+     * We capture the normal vanilla/player camera before overriding it, then
+     * SoundManagerMixin uses this snapshot while Action Camera is active.
+     */
+    private static CameraSnapshot lastVanillaCameraSnapshot;
+    private static final Camera VANILLA_SOUND_CAMERA = new Camera();
+
     private ActionCameraClientState() {
     }
 
@@ -58,6 +72,7 @@ public final class ActionCameraClientState {
     public static boolean isEditingCamera() {
         return mode == Mode.EDIT && activeCameraPos != null;
     }
+
     @Nullable
     public static BlockPos getActiveCameraPos() {
         return activeCameraPos;
@@ -66,6 +81,20 @@ public final class ActionCameraClientState {
     @Nullable
     public static ActionCameraPose getLastAppliedPose() {
         return lastAppliedPose;
+    }
+
+    @Nullable
+    public static Camera getVanillaSoundCameraOverride() {
+        if (!isActive()) {
+            return null;
+        }
+
+        if (lastVanillaCameraSnapshot == null) {
+            return null;
+        }
+
+        lastVanillaCameraSnapshot.apply(VANILLA_SOUND_CAMERA);
+        return VANILLA_SOUND_CAMERA;
     }
 
     public static void startViewing(BlockPos pos) {
@@ -178,8 +207,6 @@ public final class ActionCameraClientState {
             stopViewing();
         }
     }
-
-
 
     public static void clientTick() {
         Minecraft minecraft = Minecraft.getInstance();
@@ -314,6 +341,13 @@ public final class ActionCameraClientState {
             return;
         }
 
+        /*
+         * CameraMixin calls this at the tail of Camera.setup(...), before we
+         * overwrite the Camera with our cinematic pose. So at this point the
+         * Camera still represents the normal player/spectator camera.
+         */
+        captureVanillaCameraSnapshot(camera);
+
         BlockState state = minecraft.level.getBlockState(activeCameraPos);
 
         ActionCameraPose rawPose = ActionCameraPoseResolver.resolve(
@@ -392,5 +426,57 @@ public final class ActionCameraClientState {
         accessor.droingoActionCamera$getForwards().set(0.0F, 0.0F, 1.0F).rotate(rotation);
         accessor.droingoActionCamera$getUp().set(0.0F, 1.0F, 0.0F).rotate(rotation);
         accessor.droingoActionCamera$getLeft().set(1.0F, 0.0F, 0.0F).rotate(rotation);
+    }
+
+    private static void captureVanillaCameraSnapshot(Camera camera) {
+        CameraAccessor accessor = (CameraAccessor) camera;
+
+        Vec3 position = camera.getPosition();
+        BlockPos blockPosition = camera.getBlockPosition();
+
+        lastVanillaCameraSnapshot = new CameraSnapshot(
+                position,
+                blockPosition.getX(),
+                blockPosition.getY(),
+                blockPosition.getZ(),
+                camera.getXRot(),
+                camera.getYRot(),
+                new Quaternionf(accessor.droingoActionCamera$getRotation()),
+                new Vector3f(accessor.droingoActionCamera$getForwards()),
+                new Vector3f(accessor.droingoActionCamera$getUp()),
+                new Vector3f(accessor.droingoActionCamera$getLeft()),
+                accessor.droingoActionCamera$isDetached()
+        );
+    }
+
+    private record CameraSnapshot(
+            Vec3 position,
+            int blockX,
+            int blockY,
+            int blockZ,
+            float xRot,
+            float yRot,
+            Quaternionf rotation,
+            Vector3f forwards,
+            Vector3f up,
+            Vector3f left,
+            boolean detached
+    ) {
+        private void apply(Camera camera) {
+            CameraAccessor accessor = (CameraAccessor) camera;
+
+            accessor.droingoActionCamera$setPosition(position);
+            accessor.droingoActionCamera$getBlockPosition().set(blockX, blockY, blockZ);
+
+            accessor.droingoActionCamera$setXRot(xRot);
+            accessor.droingoActionCamera$setYRot(yRot);
+
+            accessor.droingoActionCamera$getRotation().set(rotation);
+            accessor.droingoActionCamera$getForwards().set(forwards);
+            accessor.droingoActionCamera$getUp().set(up);
+            accessor.droingoActionCamera$getLeft().set(left);
+
+            accessor.droingoActionCamera$setDetached(detached);
+        }
     }
 }

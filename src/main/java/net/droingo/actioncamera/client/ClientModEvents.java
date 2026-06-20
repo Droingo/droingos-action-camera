@@ -27,7 +27,9 @@ public final class ClientModEvents {
 
     @SubscribeEvent
     public static void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
+        event.register(ActionCameraClientModels.FLOOR_STAND);
         event.register(ActionCameraClientModels.FLOOR_HEAD);
+        event.register(ActionCameraClientModels.WALL_STAND);
         event.register(ActionCameraClientModels.WALL_HEAD);
     }
 

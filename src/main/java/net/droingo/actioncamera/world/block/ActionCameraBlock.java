@@ -6,17 +6,23 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
-import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -25,62 +31,24 @@ import org.jetbrains.annotations.Nullable;
 public final class ActionCameraBlock extends BaseEntityBlock {
     public static final MapCodec<ActionCameraBlock> CODEC = simpleCodec(ActionCameraBlock::new);
 
-    public static final EnumProperty<AttachFace> ATTACH_FACE = BlockStateProperties.ATTACH_FACE;
     public static final DirectionProperty HORIZONTAL_FACING = BlockStateProperties.HORIZONTAL_FACING;
+    public static final net.minecraft.world.level.block.state.properties.EnumProperty<AttachFace> ATTACH_FACE = BlockStateProperties.ATTACH_FACE;
 
     /*
-     * Selection shapes only.
-     *
-     * These are NOT collision boxes.
-     * They are just the outline used for looking at / right-clicking / breaking the camera.
-     *
-     * Keep them simple. The detailed model does not need a detailed hitbox.
+     * 0 1 2
+     * 3 4 5
+     * 6 7 8
      */
+    public static final IntegerProperty MOUNT_SLOT = IntegerProperty.create("mount_slot", 0, 8);
 
-    private static final VoxelShape FLOOR_SELECTION_SHAPE = box(
-            5.0D, 0.0D, 5.0D,
-            11.0D, 8.0D, 11.0D
-    );
-
-    private static final VoxelShape CEILING_SELECTION_SHAPE = box(
-            5.0D, 8.0D, 5.0D,
-            11.0D, 16.0D, 11.0D
-    );
-
-    /*
-     * Wall selection boxes.
-     *
-     * Direction means the camera is facing that direction.
-     * So a NORTH-facing wall camera is mounted to the south side of the block
-     * and projects toward north.
-     */
-
-    private static final VoxelShape WALL_SELECTION_NORTH = box(
-            5.0D, 4.0D, 8.0D,
-            11.0D, 12.0D, 16.0D
-    );
-
-    private static final VoxelShape WALL_SELECTION_SOUTH = box(
-            5.0D, 4.0D, 0.0D,
-            11.0D, 12.0D, 8.0D
-    );
-
-    private static final VoxelShape WALL_SELECTION_EAST = box(
-            0.0D, 4.0D, 5.0D,
-            8.0D, 12.0D, 11.0D
-    );
-
-    private static final VoxelShape WALL_SELECTION_WEST = box(
-            8.0D, 4.0D, 5.0D,
-            16.0D, 12.0D, 11.0D
-    );
-
-    public ActionCameraBlock(Properties properties) {
+    public ActionCameraBlock(BlockBehaviour.Properties properties) {
         super(properties);
-        this.registerDefaultState(
-                this.stateDefinition.any()
-                        .setValue(ATTACH_FACE, AttachFace.FLOOR)
+
+        registerDefaultState(
+                stateDefinition.any()
                         .setValue(HORIZONTAL_FACING, Direction.NORTH)
+                        .setValue(ATTACH_FACE, AttachFace.FLOOR)
+                        .setValue(MOUNT_SLOT, ActionCameraMountSlot.SLOT_CENTER)
         );
     }
 
@@ -96,34 +64,75 @@ public final class ActionCameraBlock extends BaseEntityBlock {
     }
 
     @Override
+    protected RenderShape getRenderShape(BlockState state) {
+        /*
+         * The whole visual camera assembly is rendered by the block entity renderer.
+         */
+        return RenderShape.INVISIBLE;
+    }
+
+    @Override
     @Nullable
     public BlockState getStateForPlacement(BlockPlaceContext context) {
         Direction clickedFace = context.getClickedFace();
-        Direction playerFacing = context.getHorizontalDirection();
 
         AttachFace attachFace;
         Direction horizontalFacing;
 
         if (clickedFace == Direction.UP) {
             attachFace = AttachFace.FLOOR;
-            horizontalFacing = playerFacing;
+            horizontalFacing = context.getHorizontalDirection();
         } else if (clickedFace == Direction.DOWN) {
             attachFace = AttachFace.CEILING;
-            horizontalFacing = playerFacing;
+            horizontalFacing = context.getHorizontalDirection();
         } else {
             attachFace = AttachFace.WALL;
             horizontalFacing = clickedFace;
         }
 
-        return this.defaultBlockState()
+        int mountSlot = ActionCameraMountSlot.slotFromContext(context);
+
+        return defaultBlockState()
                 .setValue(ATTACH_FACE, attachFace)
-                .setValue(HORIZONTAL_FACING, horizontalFacing);
+                .setValue(HORIZONTAL_FACING, horizontalFacing)
+                .setValue(MOUNT_SLOT, mountSlot);
     }
 
-    /**
-     * Selection outline / click target.
-     * This is the only visible wireframe hitbox.
-     */
+    @Override
+    protected boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
+        Direction supportDirection = getSupportDirection(state);
+        BlockPos supportPos = pos.relative(supportDirection);
+        Direction supportFace = supportDirection.getOpposite();
+
+        return level.getBlockState(supportPos).isFaceSturdy(level, supportPos, supportFace);
+    }
+
+    @Override
+    protected BlockState updateShape(
+            BlockState state,
+            Direction direction,
+            BlockState neighborState,
+            LevelAccessor level,
+            BlockPos currentPos,
+            BlockPos neighborPos
+    ) {
+        if (direction == getSupportDirection(state) && !canSurvive(state, level, currentPos)) {
+            return Blocks.AIR.defaultBlockState();
+        }
+
+        return super.updateShape(state, direction, neighborState, level, currentPos, neighborPos);
+    }
+
+    private static Direction getSupportDirection(BlockState state) {
+        AttachFace attachFace = state.getValue(ATTACH_FACE);
+
+        return switch (attachFace) {
+            case FLOOR -> Direction.DOWN;
+            case CEILING -> Direction.UP;
+            case WALL -> state.getValue(HORIZONTAL_FACING).getOpposite();
+        };
+    }
+
     @Override
     protected VoxelShape getShape(
             BlockState state,
@@ -131,17 +140,32 @@ public final class ActionCameraBlock extends BaseEntityBlock {
             BlockPos pos,
             CollisionContext context
     ) {
-        return getSelectionShapeForState(state);
+        AABB box = selectionBoxFromState(state);
+
+        return Shapes.box(
+                box.minX, box.minY, box.minZ,
+                box.maxX, box.maxY, box.maxZ
+        );
     }
 
-    /**
-     * Physical collision.
-     *
-     * Empty means:
-     * - players can walk through it
-     * - entities do not collide with it
-     * - vehicles/Sable contraptions should not catch on it
-     */
+    @Override
+    protected VoxelShape getInteractionShape(BlockState state, BlockGetter level, BlockPos pos) {
+        AABB box = selectionBoxFromState(state);
+
+        return Shapes.box(
+                box.minX, box.minY, box.minZ,
+                box.maxX, box.maxY, box.maxZ
+        );
+    }
+
+    private static AABB selectionBoxFromState(BlockState state) {
+        AttachFace attachFace = state.getValue(ATTACH_FACE);
+        Direction facing = state.getValue(HORIZONTAL_FACING);
+        int mountSlot = state.getValue(MOUNT_SLOT);
+
+        return ActionCameraMountSlot.selectionBox(attachFace, facing, mountSlot);
+    }
+
     @Override
     protected VoxelShape getCollisionShape(
             BlockState state,
@@ -152,17 +176,8 @@ public final class ActionCameraBlock extends BaseEntityBlock {
         return Shapes.empty();
     }
 
-    /**
-     * Occlusion/light shape.
-     *
-     * Empty because the model is tiny and should not block lighting like a cube.
-     */
     @Override
-    protected VoxelShape getOcclusionShape(
-            BlockState state,
-            BlockGetter level,
-            BlockPos pos
-    ) {
+    protected VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos pos) {
         return Shapes.empty();
     }
 
@@ -172,53 +187,20 @@ public final class ActionCameraBlock extends BaseEntityBlock {
     }
 
     @Override
-    public RenderShape getRenderShape(BlockState state) {
-        return RenderShape.MODEL;
+    protected BlockState rotate(BlockState state, Rotation rotation) {
+        return state.setValue(
+                HORIZONTAL_FACING,
+                rotation.rotate(state.getValue(HORIZONTAL_FACING))
+        );
+    }
+
+    @Override
+    protected BlockState mirror(BlockState state, Mirror mirror) {
+        return state.rotate(mirror.getRotation(state.getValue(HORIZONTAL_FACING)));
     }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(ATTACH_FACE, HORIZONTAL_FACING);
-    }
-
-    @Override
-    protected void onRemove(
-            BlockState oldState,
-            Level level,
-            BlockPos pos,
-            BlockState newState,
-            boolean movedByPiston
-    ) {
-        if (oldState.getBlock() != newState.getBlock()) {
-            level.removeBlockEntity(pos);
-        }
-
-        super.onRemove(oldState, level, pos, newState, movedByPiston);
-    }
-
-    private static VoxelShape getSelectionShapeForState(BlockState state) {
-        AttachFace attachFace = state.hasProperty(ATTACH_FACE)
-                ? state.getValue(ATTACH_FACE)
-                : AttachFace.FLOOR;
-
-        Direction facing = state.hasProperty(HORIZONTAL_FACING)
-                ? state.getValue(HORIZONTAL_FACING)
-                : Direction.NORTH;
-
-        return switch (attachFace) {
-            case FLOOR -> FLOOR_SELECTION_SHAPE;
-            case CEILING -> CEILING_SELECTION_SHAPE;
-            case WALL -> getWallSelectionShape(facing);
-        };
-    }
-
-    private static VoxelShape getWallSelectionShape(Direction facing) {
-        return switch (facing) {
-            case NORTH -> WALL_SELECTION_NORTH;
-            case SOUTH -> WALL_SELECTION_SOUTH;
-            case EAST -> WALL_SELECTION_EAST;
-            case WEST -> WALL_SELECTION_WEST;
-            default -> WALL_SELECTION_NORTH;
-        };
+        builder.add(HORIZONTAL_FACING, ATTACH_FACE, MOUNT_SLOT);
     }
 }
