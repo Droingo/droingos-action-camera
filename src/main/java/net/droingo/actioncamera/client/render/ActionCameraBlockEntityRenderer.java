@@ -19,23 +19,31 @@ import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.neoforged.neoforge.client.model.data.ModelData;
 
 public final class ActionCameraBlockEntityRenderer implements BlockEntityRenderer<ActionCameraBlockEntity> {
+    private static final double BLOCK_CENTER = 0.5D;
+
     /*
-     * These pivots are the point we rotate the camera head around.
+     * Floor / ceiling camera head hinge.
      *
-     * For now, keep them simple and centered.
-     * If we want ultra-precise joint rotation later, we can tune them further.
+     * This is the physical mount joint position, not the old Blockbench Cam origin.
+     *
+     * Pixel-space hinge:
+     * X = 8
+     * Y = 2
+     * Z = 7
+     *
+     * Converted to block units by dividing by 16.
      */
-    private static final double FLOOR_PIVOT_X = 0.5D;
-    private static final double FLOOR_PIVOT_Y = 0.5D;
-    private static final double FLOOR_PIVOT_Z = 0.5D;
+    private static final double FLOOR_HEAD_HINGE_X = 8.0D / 16.0D;
+    private static final double FLOOR_HEAD_HINGE_Y = 2.0D / 16.0D;
+    private static final double FLOOR_HEAD_HINGE_Z = 7.0D / 16.0D;
 
-    private static final double WALL_PIVOT_X = 0.5D;
-    private static final double WALL_PIVOT_Y = 0.5D;
-    private static final double WALL_PIVOT_Z = 0.5D;
-
-    private static final double CEILING_PIVOT_X = 0.5D;
-    private static final double CEILING_PIVOT_Y = 0.5D;
-    private static final double CEILING_PIVOT_Z = 0.5D;
+    /*
+     * Wall hinge is still rough.
+     * We will tune this separately once floor behaves correctly.
+     */
+    private static final double WALL_HEAD_HINGE_X = 0.5D;
+    private static final double WALL_HEAD_HINGE_Y = 0.5D;
+    private static final double WALL_HEAD_HINGE_Z = 0.5D;
 
     public ActionCameraBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
     }
@@ -61,37 +69,22 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         BakedModel headModel = getHeadModel(attachFace);
 
-        double pivotX = getPivotX(attachFace);
-        double pivotY = getPivotY(attachFace);
-        double pivotZ = getPivotZ(attachFace);
-
         poseStack.pushPose();
 
         /*
-         * Small placement-specific model corrections.
+         * Stage 1:
+         * Match the placed stand/block orientation.
          *
-         * Do NOT use the pivot for this.
-         * The pivot affects all rotations and will break north/south if we use it
-         * to fix east/west model alignment.
+         * This rotates around the block centre, matching how the baked stand model
+         * is rotated by the blockstate JSON.
          */
-        applyPlacementCorrection(poseStack, attachFace, facing);
+        applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
 
         /*
-         * Rotate around the chosen pivot.
+         * Stage 2:
+         * Rotate the dynamic head around the physical hinge.
          */
-        poseStack.translate(pivotX, pivotY, pivotZ);
-
-        /*
-         * 1) Apply the mount/base transform so the head matches the placed stand.
-         * 2) Apply user tuning yaw/pitch/roll on top of that.
-         */
-        applyBaseMountRotation(poseStack, attachFace, facing);
-
-        poseStack.mulPose(Axis.YP.rotationDegrees(blockEntity.getYawOffset()));
-        poseStack.mulPose(Axis.XP.rotationDegrees(blockEntity.getPitchOffset()));
-        poseStack.mulPose(Axis.ZP.rotationDegrees(blockEntity.getRollOffset()));
-
-        poseStack.translate(-pivotX, -pivotY, -pivotZ);
+        applyLiveHeadRotation(poseStack, attachFace, blockEntity);
 
         renderBakedModel(
                 headModel,
@@ -106,30 +99,6 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         poseStack.popPose();
     }
 
-    private static void applyPlacementCorrection(PoseStack poseStack, AttachFace attachFace, Direction facing) {
-        if (attachFace != AttachFace.FLOOR) {
-            return;
-        }
-
-        /*
-         * 2 pixels = 2 / 16 = 0.125 blocks.
-         *
-         * East/west floor heads need to move 2 pixels backward relative to
-         * their facing direction.
-         *
-         * NORTH/SOUTH are already correct, so leave them untouched.
-         */
-        double twoPixels = 2.0D / 16.0D;
-
-        switch (facing) {
-            case EAST -> poseStack.translate(twoPixels, 0.0D, 0.0D);
-            case WEST -> poseStack.translate(-twoPixels, 0.0D, 0.0D);
-            default -> {
-                // North/south already line up. No correction.
-            }
-        }
-    }
-
     private static BakedModel getHeadModel(AttachFace attachFace) {
         return Minecraft.getInstance()
                 .getModelManager()
@@ -139,43 +108,102 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
                 );
     }
 
-    private static double getPivotX(AttachFace attachFace) {
-        return switch (attachFace) {
-            case FLOOR -> FLOOR_PIVOT_X;
-            case WALL -> WALL_PIVOT_X;
-            case CEILING -> CEILING_PIVOT_X;
-        };
-    }
+    private static void applyBaseMountTransformAroundBlockCenter(
+            PoseStack poseStack,
+            AttachFace attachFace,
+            Direction facing
+    ) {
+        poseStack.translate(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
 
-    private static double getPivotY(AttachFace attachFace) {
-        return switch (attachFace) {
-            case FLOOR -> FLOOR_PIVOT_Y;
-            case WALL -> WALL_PIVOT_Y;
-            case CEILING -> CEILING_PIVOT_Y;
-        };
-    }
-
-    private static double getPivotZ(AttachFace attachFace) {
-        return switch (attachFace) {
-            case FLOOR -> FLOOR_PIVOT_Z;
-            case WALL -> WALL_PIVOT_Z;
-            case CEILING -> CEILING_PIVOT_Z;
-        };
-    }
-
-    private static void applyBaseMountRotation(PoseStack poseStack, AttachFace attachFace, Direction facing) {
         switch (attachFace) {
-            case FLOOR -> {
-                poseStack.mulPose(Axis.YP.rotationDegrees(yRotationForFacing(facing)));
-            }
-            case WALL -> {
-                poseStack.mulPose(Axis.YP.rotationDegrees(wallYRotationForFacing(facing)));
-            }
+            case FLOOR -> poseStack.mulPose(Axis.YP.rotationDegrees(yRotationForFacing(facing)));
+
+            case WALL -> poseStack.mulPose(Axis.YP.rotationDegrees(wallYRotationForFacing(facing)));
+
             case CEILING -> {
                 poseStack.mulPose(Axis.YP.rotationDegrees(yRotationForFacing(facing)));
                 poseStack.mulPose(Axis.XP.rotationDegrees(180.0F));
             }
         }
+
+        poseStack.translate(-BLOCK_CENTER, -BLOCK_CENTER, -BLOCK_CENTER);
+    }
+
+    private static void applyLiveHeadRotation(
+            PoseStack poseStack,
+            AttachFace attachFace,
+            ActionCameraBlockEntity blockEntity
+    ) {
+        float visualYaw = visualYawForAttachFace(attachFace, blockEntity.getYawOffset());
+        float visualPitch = visualPitchForAttachFace(attachFace, blockEntity.getPitchOffset());
+        float visualRoll = blockEntity.getRollOffset();
+
+        double hingeX = hingeXForAttachFace(attachFace);
+        double hingeY = hingeYForAttachFace(attachFace);
+        double hingeZ = hingeZForAttachFace(attachFace);
+
+        poseStack.translate(hingeX, hingeY, hingeZ);
+
+        /*
+         * Visual-only camera head rotation.
+         *
+         * The real camera view uses the saved yaw/pitch directly elsewhere.
+         * This renderer corrects the Blockbench model so the physical head points
+         * the same way the actual view is pointing.
+         */
+        poseStack.mulPose(Axis.YP.rotationDegrees(visualYaw));
+        poseStack.mulPose(Axis.XP.rotationDegrees(visualPitch));
+        poseStack.mulPose(Axis.ZP.rotationDegrees(visualRoll));
+
+        /*
+         * Visual-only lens/back correction.
+         *
+         * The exported model's lens/back direction is reversed compared to the
+         * actual camera forward direction. This flip only affects the visible model.
+         */
+        poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+
+        poseStack.translate(-hingeX, -hingeY, -hingeZ);
+    }
+
+    private static double hingeXForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_X;
+            case WALL -> WALL_HEAD_HINGE_X;
+        };
+    }
+
+    private static double hingeYForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_Y;
+            case WALL -> WALL_HEAD_HINGE_Y;
+        };
+    }
+
+    private static double hingeZForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_Z;
+            case WALL -> WALL_HEAD_HINGE_Z;
+        };
+    }
+
+    private static float visualYawForAttachFace(AttachFace attachFace, float savedYaw) {
+        /*
+         * Real camera view uses saved yaw directly.
+         * The physical model visually turns opposite, so invert only the rendered yaw.
+         */
+        return -savedYaw;
+    }
+
+    private static float visualPitchForAttachFace(AttachFace attachFace, float savedPitch) {
+        /*
+         * Floor/wall visual pitch is reversed.
+         * Ceiling was already correct because the base mount transform is upside-down.
+         */
+        return switch (attachFace) {
+            case FLOOR, WALL -> -savedPitch;
+            case CEILING -> savedPitch;
+        };
     }
 
     private static float yRotationForFacing(Direction facing) {
@@ -187,14 +215,9 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
             default -> 0.0F;
         };
     }
+
     private static float wallYRotationForFacing(Direction facing) {
         return switch (facing) {
-            /*
-             * Wall head model correction.
-             *
-             * The wall head model is 180 degrees reversed compared to the wall stand,
-             * so this map intentionally flips each horizontal direction.
-             */
             case NORTH -> 0.0F;
             case SOUTH -> 180.0F;
             case EAST -> 270.0F;
@@ -219,6 +242,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         for (RenderType renderType : model.getRenderTypes(state, random, ModelData.EMPTY)) {
             random.setSeed(seed);
+
             VertexConsumer vertexConsumer = bufferSource.getBuffer(renderType);
 
             modelRenderer.renderModel(

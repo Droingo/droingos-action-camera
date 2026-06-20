@@ -1,5 +1,6 @@
 package net.droingo.actioncamera;
 
+import net.droingo.actioncamera.network.ModNetworking;
 import net.droingo.actioncamera.registry.ModBlockEntities;
 import net.droingo.actioncamera.registry.ModBlocks;
 import net.droingo.actioncamera.registry.ModItems;
@@ -17,6 +18,7 @@ public final class DroingoActionCamera {
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.BLOCK_ENTITY_TYPES.register(modEventBus);
 
+        modEventBus.addListener(ModNetworking::registerPayloads);
         modEventBus.addListener(this::addCreativeTabContents);
     }
 

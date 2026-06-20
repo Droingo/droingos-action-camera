@@ -5,9 +5,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
 
 public final class ActionCameraBlockEntity extends BlockEntity {
     private double offsetX = 0.0D;
@@ -79,7 +84,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         this.offsetZ = Mth.clamp(offsetZ, -32.0D, 32.0D);
 
         this.yawOffset = Mth.wrapDegrees(yawOffset);
-        this.pitchOffset = Mth.clamp(pitchOffset, -180.0F, 180.0F);
+        this.pitchOffset = Mth.clamp(pitchOffset, -89.0F, 89.0F);
         this.rollOffset = Mth.wrapDegrees(rollOffset);
 
         this.fovOverride = Mth.clamp(fovOverride, 0.0F, 170.0F);
@@ -95,6 +100,11 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         this.cameraName = safeName;
         setChanged();
+
+        if (this.level != null && !this.level.isClientSide) {
+            BlockState state = getBlockState();
+            this.level.sendBlockUpdated(this.worldPosition, state, state, Block.UPDATE_ALL);
+        }
     }
 
     @Override
@@ -147,5 +157,21 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         if (tag.contains("CameraName", Tag.TAG_STRING)) {
             cameraName = tag.getString("CameraName");
         }
+    }
+
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        return saveWithoutMetadata(registries);
+    }
+
+    @Override
+    public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider registries) {
+        loadAdditional(tag, registries);
+    }
+
+    @Override
+    @Nullable
+    public Packet<ClientGamePacketListener> getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
     }
 }

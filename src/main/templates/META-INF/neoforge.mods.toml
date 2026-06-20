@@ -13,6 +13,9 @@ The first version supports static world cameras.
 Future versions will support Sable/Create Aeronautics sublevel-mounted action cameras and ReplayMod-friendly camera switching.
 '''
 
+[[mixins]]
+config="${mod_id}.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"
