@@ -16,6 +16,13 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
 
 public final class ActionCameraClientState {
+    private enum Mode {
+        NONE,
+        VIEW,
+        EDIT
+    }
+
+    private static Mode mode = Mode.NONE;
     private static BlockPos activeCameraPos;
 
     private static double editOffsetX;
@@ -40,13 +47,52 @@ public final class ActionCameraClientState {
     private ActionCameraClientState() {
     }
 
+    public static boolean isActive() {
+        return mode != Mode.NONE && activeCameraPos != null;
+    }
+
+    public static boolean isViewingCamera() {
+        return mode == Mode.VIEW && activeCameraPos != null;
+    }
+
     public static boolean isEditingCamera() {
-        return activeCameraPos != null;
+        return mode == Mode.EDIT && activeCameraPos != null;
+    }
+    @Nullable
+    public static BlockPos getActiveCameraPos() {
+        return activeCameraPos;
     }
 
     @Nullable
     public static ActionCameraPose getLastAppliedPose() {
         return lastAppliedPose;
+    }
+
+    public static void startViewing(BlockPos pos) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.level == null || minecraft.player == null) {
+            return;
+        }
+
+        if (!(minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity camera)) {
+            return;
+        }
+
+        activeCameraPos = pos.immutable();
+        mode = Mode.VIEW;
+
+        dirty = false;
+        saveCooldownTicks = 0;
+        wasShiftDown = minecraft.options.keyShift.isDown();
+
+        smoothedPose = null;
+        lastAppliedPose = null;
+
+        minecraft.player.displayClientMessage(
+                Component.literal("Action Camera: " + camera.getCameraName()),
+                true
+        );
     }
 
     public static void startEditing(BlockPos pos) {
@@ -62,6 +108,7 @@ public final class ActionCameraClientState {
         }
 
         activeCameraPos = pos.immutable();
+        mode = Mode.EDIT;
 
         editOffsetX = camera.getOffsetX();
         editOffsetY = camera.getOffsetY();
@@ -87,10 +134,25 @@ public final class ActionCameraClientState {
         );
     }
 
+    public static void stopViewing() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        mode = Mode.NONE;
+        activeCameraPos = null;
+        smoothedPose = null;
+        lastAppliedPose = null;
+        dirty = false;
+
+        if (minecraft.player != null) {
+            minecraft.player.displayClientMessage(Component.literal("Action Camera disabled"), true);
+        }
+    }
+
     public static void stopEditing(boolean save) {
         Minecraft minecraft = Minecraft.getInstance();
 
         if (activeCameraPos == null) {
+            mode = Mode.NONE;
             return;
         }
 
@@ -98,6 +160,7 @@ public final class ActionCameraClientState {
             sendUpdateToServer();
         }
 
+        mode = Mode.NONE;
         activeCameraPos = null;
         smoothedPose = null;
         lastAppliedPose = null;
@@ -108,33 +171,45 @@ public final class ActionCameraClientState {
         }
     }
 
+    public static void stopActiveCamera() {
+        if (isEditingCamera()) {
+            stopEditing(true);
+        } else if (isViewingCamera()) {
+            stopViewing();
+        }
+    }
+
+
+
     public static void clientTick() {
         Minecraft minecraft = Minecraft.getInstance();
 
-        if (!isEditingCamera()) {
+        if (!isActive()) {
             wasShiftDown = minecraft.options.keyShift.isDown();
             return;
         }
 
         if (minecraft.level == null || activeCameraPos == null) {
-            stopEditing(false);
+            mode = Mode.NONE;
+            activeCameraPos = null;
             return;
         }
 
         if (!(minecraft.level.getBlockEntity(activeCameraPos) instanceof ActionCameraBlockEntity)) {
-            stopEditing(false);
+            mode = Mode.NONE;
+            activeCameraPos = null;
             return;
         }
 
         boolean shiftDown = minecraft.options.keyShift.isDown();
         if (shiftDown && !wasShiftDown) {
-            stopEditing(true);
+            stopActiveCamera();
             wasShiftDown = true;
             return;
         }
         wasShiftDown = shiftDown;
 
-        if (dirty) {
+        if (isEditingCamera() && dirty) {
             saveCooldownTicks--;
 
             if (saveCooldownTicks <= 0) {
@@ -149,17 +224,6 @@ public final class ActionCameraClientState {
             return false;
         }
 
-        /*
-         * Vanilla mouse rotation eventually applies a 0.15F turn multiplier.
-         * Using the same scale keeps this feeling close to normal Minecraft aiming.
-         *
-         * Yaw:
-         * - current direction feels correct, so keep it as-is.
-         *
-         * Pitch:
-         * - subtract instead of add so moving the mouse up makes the camera look up.
-         * - invertYMouse has already been handled in MouseHandlerMixin.
-         */
         editYawOffset = Mth.wrapDegrees(editYawOffset + (float) vanillaYawDelta * 0.15F);
         editPitchOffset = Mth.clamp(editPitchOffset - (float) vanillaPitchDelta * 0.15F, -89.0F, 89.0F);
 
@@ -214,28 +278,39 @@ public final class ActionCameraClientState {
     }
 
     public static float getActiveFovOverride() {
-        if (!isEditingCamera()) {
+        if (!isActive()) {
             return 0.0F;
         }
 
-        return editFovOverride;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null || activeCameraPos == null) {
+            return 0.0F;
+        }
+
+        if (minecraft.level.getBlockEntity(activeCameraPos) instanceof ActionCameraBlockEntity camera) {
+            return camera.getFovOverride();
+        }
+
+        return 0.0F;
     }
 
     public static void applyToCamera(Camera camera, float partialTick) {
-        if (!isEditingCamera()) {
+        if (!isActive()) {
             return;
         }
 
         Minecraft minecraft = Minecraft.getInstance();
 
         if (minecraft.level == null || activeCameraPos == null) {
-            stopEditing(false);
+            mode = Mode.NONE;
+            activeCameraPos = null;
             return;
         }
 
         BlockEntity blockEntity = minecraft.level.getBlockEntity(activeCameraPos);
         if (!(blockEntity instanceof ActionCameraBlockEntity actionCamera)) {
-            stopEditing(false);
+            mode = Mode.NONE;
+            activeCameraPos = null;
             return;
         }
 
@@ -289,6 +364,10 @@ public final class ActionCameraClientState {
 
     private static void applyCameraFields(Camera camera, ActionCameraPose pose) {
         CameraAccessor accessor = (CameraAccessor) camera;
+
+        /*
+         * Force detached camera mode so the local player still renders.
+         */
         accessor.droingoActionCamera$setDetached(true);
 
         Vec3 position = pose.position();

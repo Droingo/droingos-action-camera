@@ -38,12 +38,16 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
     private static final double FLOOR_HEAD_HINGE_Z = 7.0D / 16.0D;
 
     /*
-     * Wall hinge is still rough.
-     * We will tune this separately once floor behaves correctly.
+     * Wall camera head hinge.
+     *
+     * From Blockbench Wall/Cam origin:
+     * [8, 7.25, 14.6]
+     *
+     * Converted from pixels to block units.
      */
-    private static final double WALL_HEAD_HINGE_X = 0.5D;
-    private static final double WALL_HEAD_HINGE_Y = 0.5D;
-    private static final double WALL_HEAD_HINGE_Z = 0.5D;
+    private static final double WALL_HEAD_HINGE_X = 8.0D / 16.0D;
+    private static final double WALL_HEAD_HINGE_Y = 7.25D / 16.0D;
+    private static final double WALL_HEAD_HINGE_Z = 14.6D / 16.0D;
 
     public ActionCameraBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
     }

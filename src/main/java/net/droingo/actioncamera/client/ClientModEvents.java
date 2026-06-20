@@ -9,6 +9,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 
 @EventBusSubscriber(
         modid = DroingoActionCamera.MOD_ID,
@@ -17,6 +18,11 @@ import net.neoforged.neoforge.client.event.ModelEvent;
 )
 public final class ClientModEvents {
     private ClientModEvents() {
+    }
+
+    @SubscribeEvent
+    public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(ActionCameraKeyMappings.TOGGLE_ACTION_CAMERA_VIEW);
     }
 
     @SubscribeEvent

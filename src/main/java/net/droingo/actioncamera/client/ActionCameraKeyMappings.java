@@ -1,0 +1,21 @@
+package net.droingo.actioncamera.client;
+
+import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.KeyMapping;
+import net.neoforged.neoforge.client.settings.KeyConflictContext;
+import org.lwjgl.glfw.GLFW;
+
+public final class ActionCameraKeyMappings {
+    public static final String CATEGORY = "key.categories.droingo_action_camera";
+
+    public static final KeyMapping TOGGLE_ACTION_CAMERA_VIEW = new KeyMapping(
+            "key.droingo_action_camera.toggle_action_camera_view",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_C,
+            CATEGORY
+    );
+
+    private ActionCameraKeyMappings() {
+    }
+}

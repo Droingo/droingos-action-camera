@@ -1,4 +1,7 @@
 {
   "block.droingo_action_camera.action_camera": "Action Camera",
-  "item.droingo_action_camera.action_camera": "Action Camera"
+  "item.droingo_action_camera.action_camera": "Action Camera",
+
+  "key.categories.droingo_action_camera": "Droingo's Action Camera",
+  "key.droingo_action_camera.toggle_action_camera_view": "Toggle Action Camera View"
 }
