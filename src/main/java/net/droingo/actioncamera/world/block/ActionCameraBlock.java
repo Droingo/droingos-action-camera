@@ -11,9 +11,14 @@ import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
@@ -104,7 +109,56 @@ public final class ActionCameraBlock extends BaseEntityBlock {
         BlockPos supportPos = pos.relative(supportDirection);
         Direction supportFace = supportDirection.getOpposite();
 
-        return level.getBlockState(supportPos).isFaceSturdy(level, supportPos, supportFace);
+        BlockState supportState = level.getBlockState(supportPos);
+
+        return canAttachToSupport(level, supportPos, supportState, supportFace);
+    }
+
+    private static boolean canAttachToSupport(
+            LevelReader level,
+            BlockPos supportPos,
+            BlockState supportState,
+            Direction supportFace
+    ) {
+        /*
+         * Normal full-block behaviour.
+         */
+        if (supportState.isFaceSturdy(level, supportPos, supportFace)) {
+            return true;
+        }
+
+        /*
+         * Extra support list for partial blocks.
+         *
+         * These blocks often fail isFaceSturdy(...) because their support face is
+         * not a full cube, but visually they are perfectly reasonable things to
+         * mount a tiny Action Camera onto.
+         */
+        Block supportBlock = supportState.getBlock();
+
+        if (supportBlock instanceof FenceBlock
+                || supportBlock instanceof FenceGateBlock
+                || supportBlock instanceof WallBlock
+                || supportBlock instanceof SlabBlock
+                || supportBlock instanceof StairBlock) {
+            return hasAnyUsableShape(level, supportPos, supportState);
+        }
+
+        return false;
+    }
+
+    private static boolean hasAnyUsableShape(LevelReader level, BlockPos supportPos, BlockState supportState) {
+        if (!(level instanceof BlockGetter blockGetter)) {
+            return true;
+        }
+
+        VoxelShape collisionShape = supportState.getCollisionShape(blockGetter, supportPos);
+        if (!collisionShape.isEmpty()) {
+            return true;
+        }
+
+        VoxelShape visualShape = supportState.getShape(blockGetter, supportPos);
+        return !visualShape.isEmpty();
     }
 
     @Override
