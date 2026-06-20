@@ -1,0 +1,55 @@
+{
+  "variants": {
+    "face=floor,facing=north": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand"
+    },
+    "face=floor,facing=east": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "y": 90
+    },
+    "face=floor,facing=south": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "y": 180
+    },
+    "face=floor,facing=west": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "y": 270
+    },
+
+    "face=wall,facing=north": {
+      "model": "droingo_action_camera:block/action_camera_wall_stand"
+    },
+    "face=wall,facing=east": {
+      "model": "droingo_action_camera:block/action_camera_wall_stand",
+      "y": 90
+    },
+    "face=wall,facing=south": {
+      "model": "droingo_action_camera:block/action_camera_wall_stand",
+      "y": 180
+    },
+    "face=wall,facing=west": {
+      "model": "droingo_action_camera:block/action_camera_wall_stand",
+      "y": 270
+    },
+
+    "face=ceiling,facing=north": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "x": 180
+    },
+    "face=ceiling,facing=east": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "x": 180,
+      "y": 90
+    },
+    "face=ceiling,facing=south": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=west": {
+      "model": "droingo_action_camera:block/action_camera_floor_stand",
+      "x": 180,
+      "y": 270
+    }
+  }
+}

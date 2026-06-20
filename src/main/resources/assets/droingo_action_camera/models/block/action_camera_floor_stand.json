@@ -1,35 +1,35 @@
 {
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
-	"textures": {
-		"1": "action_camera_wall",
-		"particle": "action_camera_floor"
-	},
+  "textures": {
+    "0": "droingo_action_camera:block/action_camera_floor",
+    "particle": "droingo_action_camera:block/action_camera_floor"
+  },
 	"elements": [
 		{
-			"from": [7, 5, 15],
-			"to": [9, 8, 16],
-			"rotation": {"angle": 0, "axis": "y", "origin": [7, 6, 16]},
+			"from": [7, 0, 5.25],
+			"to": [9, 1, 8.25],
+			"rotation": {"angle": 0, "axis": "y", "origin": [7, 0, 6.25]},
 			"faces": {
-				"north": {"uv": [10, 0, 12, 3], "texture": "#1"},
-				"east": {"uv": [8, 10, 9, 13], "texture": "#1"},
-				"south": {"uv": [2, 10, 4, 13], "texture": "#1"},
-				"west": {"uv": [9, 10, 10, 13], "texture": "#1"},
-				"up": {"uv": [10, 4, 8, 3], "texture": "#1"},
-				"down": {"uv": [12, 5, 10, 6], "texture": "#1"}
+				"north": {"uv": [2, 6, 4, 7], "texture": "#0"},
+				"east": {"uv": [11, 0, 14, 1], "texture": "#0"},
+				"south": {"uv": [2, 11, 4, 12], "texture": "#0"},
+				"west": {"uv": [11, 1, 14, 2], "texture": "#0"},
+				"up": {"uv": [6, 7, 4, 4], "texture": "#0"},
+				"down": {"uv": [2, 6, 0, 9], "texture": "#0"}
 			}
 		},
 		{
-			"from": [7.5, 6.75, 12.6],
-			"to": [8.5, 7.75, 14.6],
-			"rotation": {"angle": 22.5, "axis": "x", "origin": [7.5, 5.75, 14.6]},
+			"from": [7.5, 0, 6.5],
+			"to": [8.5, 2, 7.5],
+			"rotation": {"angle": 0, "axis": "y", "origin": [7.5, 0, 5.5]},
 			"faces": {
-				"north": {"uv": [12, 2, 13, 3], "texture": "#1"},
-				"east": {"uv": [10, 10, 12, 11], "texture": "#1"},
-				"south": {"uv": [12, 3, 13, 4], "texture": "#1"},
-				"west": {"uv": [0, 11, 2, 12], "texture": "#1"},
-				"up": {"uv": [12, 8, 11, 6], "texture": "#1"},
-				"down": {"uv": [12, 8, 11, 10], "texture": "#1"}
+				"north": {"uv": [11, 2, 12, 4], "texture": "#0"},
+				"east": {"uv": [4, 11, 5, 13], "texture": "#0"},
+				"south": {"uv": [5, 11, 6, 13], "texture": "#0"},
+				"west": {"uv": [6, 11, 7, 13], "texture": "#0"},
+				"up": {"uv": [6, 8, 5, 7], "texture": "#0"},
+				"down": {"uv": [8, 11, 7, 12], "texture": "#0"}
 			}
 		}
 	],
@@ -66,7 +66,7 @@
 	},
 	"groups": [
 		{
-			"name": "Wall",
+			"name": "Floor",
 			"origin": [8, 8, 8],
 			"scope": 0,
 			"color": 0,

@@ -1,10 +1,11 @@
 {
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
-	"textures": {
-		"1": "action_camera_wall",
-		"particle": "action_camera_floor"
-	},
+  "textures": {
+    "0": "droingo_action_camera:block/action_camera_floor",
+    "1": "droingo_action_camera:block/action_camera_wall",
+    "particle": "droingo_action_camera:block/action_camera_wall"
+  },
 	"elements": [
 		{
 			"from": [6.5, 7.75, 12.75],
