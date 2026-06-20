@@ -73,8 +73,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         /*
          * Stage 1:
-         * Move the whole assembly to the exact 3x3 placement slot using the same
-         * world/block-space offset used by the actual camera pose.
+         * Move the whole assembly to the exact 3x3 placement slot.
          */
         applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
 
@@ -188,10 +187,21 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         /*
          * Visual-only lens/back correction.
+         *
+         * Wall model still needs this correction. Floor/ceiling were visually
+         * backwards with this correction after the mount-slot renderer rewrite,
+         * so they now use 0 degrees here.
          */
-        poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+        poseStack.mulPose(Axis.YP.rotationDegrees(lensBackCorrectionDegrees(attachFace)));
 
         poseStack.translate(-hingeX, -hingeY, -hingeZ);
+    }
+
+    private static float lensBackCorrectionDegrees(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR -> 0.0F;
+            case CEILING, WALL -> 180.0F;
+        };
     }
 
     private static double hingeXForAttachFace(AttachFace attachFace) {

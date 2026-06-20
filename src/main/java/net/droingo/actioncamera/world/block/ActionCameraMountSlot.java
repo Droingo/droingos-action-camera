@@ -27,6 +27,18 @@ public final class ActionCameraMountSlot {
     private static final double SHAPE_MIN = 5.0D / 16.0D;
     private static final double SHAPE_MAX = 11.0D / 16.0D;
 
+    /*
+     * Wall-only depth correction.
+     *
+     * The visible wall camera model sits closer to the supporting block face than
+     * the generic slot centre. This shifts the selection box and actual camera
+     * viewpoint base closer to the visible model without moving the rendered model.
+     */
+    private static final double WALL_HITBOX_AND_VIEW_DEPTH_OFFSET = 4.0D / 16.0D;
+
+    private static final double FLOOR_HITBOX_AND_VIEW_HEIGHT_OFFSET = -3.0D / 16.0D;
+    private static final double CEILING_HITBOX_AND_VIEW_HEIGHT_OFFSET = 3.0D / 16.0D;
+
     private ActionCameraMountSlot() {
     }
 
@@ -86,12 +98,9 @@ public final class ActionCameraMountSlot {
     }
 
     /**
-     * The single source of truth for where a mount slot sits inside the placed
-     * block position.
+     * Main placement offset for the rendered physical camera model.
      *
      * This returns an offset in block/world axes, not model-local axes.
-     *
-     * Renderer, hitbox, and actual camera pose should all use this same value.
      */
     public static Vec3 worldAssemblyOffset(AttachFace attachFace, Direction facing, int slot) {
         Direction clickedFace = switch (attachFace) {
@@ -104,8 +113,38 @@ public final class ActionCameraMountSlot {
     }
 
     /**
-     * Kept for older code paths/debugging, but new renderer/pose code should use
-     * worldAssemblyOffset(...).
+     * Offset used by the actual camera viewpoint and selection box.
+     *
+     * This deliberately differs from worldAssemblyOffset in small ways:
+     * - wall cameras are pushed toward the visible wall-mounted model
+     * - floor cameras are pushed slightly downward toward the visible head
+     * - ceiling cameras are pushed slightly upward toward the visible head
+     *
+     * The rendered model itself does not move here.
+     */
+    public static Vec3 cameraPoseOffset(AttachFace attachFace, Direction facing, int slot) {
+        Vec3 offset = worldAssemblyOffset(attachFace, facing, slot);
+
+        return switch (attachFace) {
+            case WALL -> offset.add(wallModelDepthOffset(facing));
+            case FLOOR -> offset.add(0.0D, FLOOR_HITBOX_AND_VIEW_HEIGHT_OFFSET, 0.0D);
+            case CEILING -> offset.add(0.0D, CEILING_HITBOX_AND_VIEW_HEIGHT_OFFSET, 0.0D);
+        };
+    }
+
+    public static Vec3 wallModelDepthOffset(Direction facing) {
+        Direction towardSupportFace = facing.getOpposite();
+
+        return new Vec3(
+                towardSupportFace.getStepX() * WALL_HITBOX_AND_VIEW_DEPTH_OFFSET,
+                0.0D,
+                towardSupportFace.getStepZ() * WALL_HITBOX_AND_VIEW_DEPTH_OFFSET
+        );
+    }
+
+    /**
+     * Kept for older/debug paths.
+     * New renderer/pose code should use worldAssemblyOffset(...) or cameraPoseOffset(...).
      */
     public static Vec3 localAssemblyOffset(AttachFace attachFace, int slot) {
         int safeSlot = Mth.clamp(slot, 0, 8);
@@ -147,7 +186,7 @@ public final class ActionCameraMountSlot {
     }
 
     public static AABB selectionBox(AttachFace attachFace, Direction facing, int slot) {
-        Vec3 offset = worldAssemblyOffset(attachFace, facing, slot);
+        Vec3 offset = cameraPoseOffset(attachFace, facing, slot);
 
         AABB base = switch (attachFace) {
             case FLOOR -> new AABB(

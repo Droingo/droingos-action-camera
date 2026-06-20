@@ -14,6 +14,13 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 public final class ActionCameraPoseResolver {
+    /*
+     * How far forward from the camera base point the actual view sits.
+     *
+     * Tune only this value if the view feels too far inside/outside the camera:
+     * - smaller = closer to camera body
+     * - larger = further out in front of lens
+     */
     private static final double CAMERA_VIEW_FORWARD_OFFSET = 4.0D / 16.0D;
 
     private ActionCameraPoseResolver() {
@@ -45,7 +52,16 @@ public final class ActionCameraPoseResolver {
         float finalPitch = basePitch + camera.getPitchOffset();
         float finalRoll = camera.getRollOffset();
 
-        Vec3 slotOffset = ActionCameraMountSlot.worldAssemblyOffset(attachFace, facing, mountSlot);
+        /*
+         * Use cameraPoseOffset, not worldAssemblyOffset.
+         *
+         * worldAssemblyOffset = rendered model position.
+         * cameraPoseOffset = real viewpoint/hitbox position.
+         *
+         * On walls, this pushes the actual camera view closer to the visible
+         * wall-mounted camera head.
+         */
+        Vec3 slotOffset = ActionCameraMountSlot.cameraPoseOffset(attachFace, facing, mountSlot);
 
         Quaternionf cameraRotation = new Quaternionf().rotationYXZ(
                 (float) Math.toRadians(-finalYaw),
