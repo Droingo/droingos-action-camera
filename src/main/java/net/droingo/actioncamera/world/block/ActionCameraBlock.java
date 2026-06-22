@@ -4,8 +4,11 @@ import com.mojang.serialization.MapCodec;
 import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BaseEntityBlock;
@@ -26,6 +29,7 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -37,7 +41,7 @@ public final class ActionCameraBlock extends BaseEntityBlock {
     public static final MapCodec<ActionCameraBlock> CODEC = simpleCodec(ActionCameraBlock::new);
 
     public static final DirectionProperty HORIZONTAL_FACING = BlockStateProperties.HORIZONTAL_FACING;
-    public static final net.minecraft.world.level.block.state.properties.EnumProperty<AttachFace> ATTACH_FACE = BlockStateProperties.ATTACH_FACE;
+    public static final EnumProperty<AttachFace> ATTACH_FACE = BlockStateProperties.ATTACH_FACE;
 
     /*
      * 0 1 2
@@ -103,12 +107,53 @@ public final class ActionCameraBlock extends BaseEntityBlock {
                 .setValue(MOUNT_SLOT, mountSlot);
     }
 
+    /*
+     * Single-punch pickup.
+     *
+     * Left-clicking/punching the Action Camera removes it instantly and puts the
+     * item back into the player's inventory. If the inventory is full, it drops.
+     *
+     * Creative mode removes it without duplicating an item.
+     */
+    @Override
+    public void attack(BlockState state, Level level, BlockPos pos, Player player) {
+        if (level.isClientSide()) {
+            return;
+        }
+
+        if (player.isSpectator()) {
+            return;
+        }
+
+        pickUpCamera(level, pos, state, player);
+    }
+
+    private void pickUpCamera(Level level, BlockPos pos, BlockState state, Player player) {
+        boolean removed = level.removeBlock(pos, false);
+        if (!removed) {
+            return;
+        }
+
+        // Vanilla block-break particles/sound event.
+        level.levelEvent(2001, pos, Block.getId(state));
+
+        if (player.isCreative()) {
+            return;
+        }
+
+        ItemStack stack = new ItemStack(state.getBlock());
+
+        boolean addedToInventory = player.getInventory().add(stack);
+        if (!addedToInventory || !stack.isEmpty()) {
+            player.drop(stack, false);
+        }
+    }
+
     @Override
     protected boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
         Direction supportDirection = getSupportDirection(state);
         BlockPos supportPos = pos.relative(supportDirection);
         Direction supportFace = supportDirection.getOpposite();
-
         BlockState supportState = level.getBlockState(supportPos);
 
         return canAttachToSupport(level, supportPos, supportState, supportFace);
@@ -197,8 +242,12 @@ public final class ActionCameraBlock extends BaseEntityBlock {
         AABB box = selectionBoxFromState(state);
 
         return Shapes.box(
-                box.minX, box.minY, box.minZ,
-                box.maxX, box.maxY, box.maxZ
+                box.minX,
+                box.minY,
+                box.minZ,
+                box.maxX,
+                box.maxY,
+                box.maxZ
         );
     }
 
@@ -207,8 +256,12 @@ public final class ActionCameraBlock extends BaseEntityBlock {
         AABB box = selectionBoxFromState(state);
 
         return Shapes.box(
-                box.minX, box.minY, box.minZ,
-                box.maxX, box.maxY, box.maxZ
+                box.minX,
+                box.minY,
+                box.minZ,
+                box.maxX,
+                box.maxY,
+                box.maxZ
         );
     }
 

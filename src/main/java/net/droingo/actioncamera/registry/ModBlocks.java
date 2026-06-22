@@ -14,7 +14,7 @@ public final class ModBlocks {
     public static final DeferredRegister<Block> BLOCKS =
             DeferredRegister.create(Registries.BLOCK, DroingoActionCamera.MOD_ID);
 
-    public static final Supplier<Block> ACTION_CAMERA = BLOCKS.register(
+    public static final Supplier<ActionCameraBlock> ACTION_CAMERA = BLOCKS.register(
             "action_camera",
             () -> new ActionCameraBlock(
                     BlockBehaviour.Properties.of()

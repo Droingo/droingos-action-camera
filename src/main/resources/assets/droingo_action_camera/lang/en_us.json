@@ -1,6 +1,13 @@
 {
+  "itemGroup.droingo_action_camera.droingo_action_camera": "Droingo's Action Camera",
+
   "block.droingo_action_camera.action_camera": "Action Camera",
   "item.droingo_action_camera.action_camera": "Action Camera",
+
+  "tooltip.droingo_action_camera.hold_shift": "Hold SHIFT for more details",
+  "tooltip.droingo_action_camera.action_camera.line_1": "Places a physical cinematic camera block.",
+  "tooltip.droingo_action_camera.action_camera.line_2": "Right-click a placed camera to edit its aim.",
+  "tooltip.droingo_action_camera.action_camera.line_3": "Press C to enter or cycle nearby loaded cameras.",
 
   "key.categories.droingo_action_camera": "Droingo's Action Camera",
   "key.droingo_action_camera.toggle_action_camera_view": "Toggle Action Camera View"
