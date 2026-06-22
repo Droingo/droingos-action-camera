@@ -1,35 +1,54 @@
 package net.droingo.actioncamera.world.blockentity;
 
 import net.droingo.actioncamera.registry.ModBlockEntities;
+import net.droingo.actioncamera.world.ActionCameraKnownCameras;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
 public final class ActionCameraBlockEntity extends BlockEntity {
-    private double offsetX = 0.0D;
-    private double offsetY = 0.0D;
-    private double offsetZ = 0.0D;
+    private static final int MAX_CAMERA_NAME_LENGTH = 32;
 
-    private float yawOffset = 0.0F;
-    private float pitchOffset = 0.0F;
-    private float rollOffset = 0.0F;
+    private double offsetX;
+    private double offsetY;
+    private double offsetZ;
 
-    private float fovOverride = 0.0F;
-    private float smoothing = 0.0F;
+    private float yawOffset;
+    private float pitchOffset;
+    private float rollOffset;
+    private float fovOverride;
+    private float smoothing;
 
     private String cameraName = "Action Camera";
 
     public ActionCameraBlockEntity(BlockPos pos, BlockState blockState) {
         super(ModBlockEntities.ACTION_CAMERA.get(), pos, blockState);
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+
+        /*
+         * Auto-discovery for C cycling.
+         *
+         * This is important for servers, ReplayMod, and Sable sublevels. The player
+         * should not have to right-click a camera before it becomes cycleable.
+         */
+        ActionCameraKnownCameras.register(worldPosition);
+    }
+
+    @Override
+    public void setRemoved() {
+        ActionCameraKnownCameras.unregister(worldPosition);
+        super.setRemoved();
     }
 
     public double getOffsetX() {
@@ -89,22 +108,27 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         this.fovOverride = Mth.clamp(fovOverride, 0.0F, 170.0F);
         this.smoothing = Mth.clamp(smoothing, 0.0F, 0.95F);
+        this.cameraName = sanitizeCameraName(cameraName);
 
-        String safeName = cameraName == null ? "Action Camera" : cameraName.trim();
-        if (safeName.isEmpty()) {
-            safeName = "Action Camera";
-        }
-        if (safeName.length() > 32) {
-            safeName = safeName.substring(0, 32);
-        }
-
-        this.cameraName = safeName;
         setChanged();
 
-        if (this.level != null && !this.level.isClientSide) {
-            BlockState state = getBlockState();
-            this.level.sendBlockUpdated(this.worldPosition, state, state, Block.UPDATE_ALL);
+        if (level != null && !level.isClientSide()) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
         }
+    }
+
+    private static String sanitizeCameraName(String name) {
+        if (name == null || name.isBlank()) {
+            return "Action Camera";
+        }
+
+        String trimmed = name.trim();
+
+        if (trimmed.length() > MAX_CAMERA_NAME_LENGTH) {
+            return trimmed.substring(0, MAX_CAMERA_NAME_LENGTH);
+        }
+
+        return trimmed;
     }
 
     @Override
@@ -121,6 +145,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         tag.putFloat("FovOverride", fovOverride);
         tag.putFloat("Smoothing", smoothing);
+
         tag.putString("CameraName", cameraName);
     }
 
@@ -128,40 +153,35 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
 
-        if (tag.contains("OffsetX", Tag.TAG_DOUBLE)) {
-            offsetX = tag.getDouble("OffsetX");
-        }
-        if (tag.contains("OffsetY", Tag.TAG_DOUBLE)) {
-            offsetY = tag.getDouble("OffsetY");
-        }
-        if (tag.contains("OffsetZ", Tag.TAG_DOUBLE)) {
-            offsetZ = tag.getDouble("OffsetZ");
+        offsetX = Mth.clamp(tag.getDouble("OffsetX"), -0.5D, 0.5D);
+        offsetY = Mth.clamp(tag.getDouble("OffsetY"), -0.5D, 0.5D);
+        offsetZ = Mth.clamp(tag.getDouble("OffsetZ"), -0.5D, 0.5D);
+
+        yawOffset = Mth.wrapDegrees(tag.getFloat("YawOffset"));
+        pitchOffset = Mth.clamp(tag.getFloat("PitchOffset"), -89.0F, 89.0F);
+        rollOffset = Mth.wrapDegrees(tag.getFloat("RollOffset"));
+
+        fovOverride = Mth.clamp(tag.getFloat("FovOverride"), 0.0F, 170.0F);
+        smoothing = Mth.clamp(tag.getFloat("Smoothing"), 0.0F, 0.95F);
+
+        if (tag.contains("CameraName")) {
+            cameraName = sanitizeCameraName(tag.getString("CameraName"));
+        } else {
+            cameraName = "Action Camera";
         }
 
-        if (tag.contains("YawOffset", Tag.TAG_FLOAT)) {
-            yawOffset = tag.getFloat("YawOffset");
-        }
-        if (tag.contains("PitchOffset", Tag.TAG_FLOAT)) {
-            pitchOffset = tag.getFloat("PitchOffset");
-        }
-        if (tag.contains("RollOffset", Tag.TAG_FLOAT)) {
-            rollOffset = tag.getFloat("RollOffset");
-        }
-
-        if (tag.contains("FovOverride", Tag.TAG_FLOAT)) {
-            fovOverride = tag.getFloat("FovOverride");
-        }
-        if (tag.contains("Smoothing", Tag.TAG_FLOAT)) {
-            smoothing = tag.getFloat("Smoothing");
-        }
-        if (tag.contains("CameraName", Tag.TAG_STRING)) {
-            cameraName = tag.getString("CameraName");
-        }
+        /*
+         * Re-register after NBT load too. This covers chunk/replay reload paths
+         * where onLoad timing differs between vanilla, server, and ReplayMod.
+         */
+        ActionCameraKnownCameras.register(worldPosition);
     }
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        return saveWithoutMetadata(registries);
+        CompoundTag tag = super.getUpdateTag(registries);
+        saveAdditional(tag, registries);
+        return tag;
     }
 
     @Override

@@ -25,6 +25,7 @@ public final class ActionCameraClientState {
 
     private static Mode mode = Mode.NONE;
     private static BlockPos activeCameraPos;
+    private static String activeCameraLabel = "Action Camera";
 
     private static double editOffsetX;
     private static double editOffsetY;
@@ -78,6 +79,12 @@ public final class ActionCameraClientState {
         return activeCameraPos;
     }
 
+    public static String getActiveCameraLabel() {
+        return activeCameraLabel == null || activeCameraLabel.isBlank()
+                ? "Action Camera"
+                : activeCameraLabel;
+    }
+
     @Nullable
     public static ActionCameraPose getLastAppliedPose() {
         return lastAppliedPose;
@@ -98,6 +105,10 @@ public final class ActionCameraClientState {
     }
 
     public static void startViewing(BlockPos pos) {
+        startViewing(pos, null);
+    }
+
+    public static void startViewing(BlockPos pos, @Nullable String label) {
         Minecraft minecraft = Minecraft.getInstance();
 
         if (minecraft.level == null || minecraft.player == null) {
@@ -109,6 +120,7 @@ public final class ActionCameraClientState {
         }
 
         activeCameraPos = pos.immutable();
+        activeCameraLabel = label == null || label.isBlank() ? camera.getCameraName() : label;
         mode = Mode.VIEW;
 
         dirty = false;
@@ -119,7 +131,7 @@ public final class ActionCameraClientState {
         lastAppliedPose = null;
 
         minecraft.player.displayClientMessage(
-                Component.literal("Action Camera: " + camera.getCameraName()),
+                Component.literal(getActiveCameraLabel()),
                 true
         );
     }
@@ -137,6 +149,7 @@ public final class ActionCameraClientState {
         }
 
         activeCameraPos = pos.immutable();
+        activeCameraLabel = camera.getCameraName();
         mode = Mode.EDIT;
 
         editOffsetX = camera.getOffsetX();
@@ -168,6 +181,7 @@ public final class ActionCameraClientState {
 
         mode = Mode.NONE;
         activeCameraPos = null;
+        activeCameraLabel = "Action Camera";
         smoothedPose = null;
         lastAppliedPose = null;
         dirty = false;
@@ -182,6 +196,7 @@ public final class ActionCameraClientState {
 
         if (activeCameraPos == null) {
             mode = Mode.NONE;
+            activeCameraLabel = "Action Camera";
             return;
         }
 
@@ -191,6 +206,7 @@ public final class ActionCameraClientState {
 
         mode = Mode.NONE;
         activeCameraPos = null;
+        activeCameraLabel = "Action Camera";
         smoothedPose = null;
         lastAppliedPose = null;
         dirty = false;
@@ -219,12 +235,14 @@ public final class ActionCameraClientState {
         if (minecraft.level == null || activeCameraPos == null) {
             mode = Mode.NONE;
             activeCameraPos = null;
+            activeCameraLabel = "Action Camera";
             return;
         }
 
         if (!(minecraft.level.getBlockEntity(activeCameraPos) instanceof ActionCameraBlockEntity)) {
             mode = Mode.NONE;
             activeCameraPos = null;
+            activeCameraLabel = "Action Camera";
             return;
         }
 
@@ -331,6 +349,7 @@ public final class ActionCameraClientState {
         if (minecraft.level == null || activeCameraPos == null) {
             mode = Mode.NONE;
             activeCameraPos = null;
+            activeCameraLabel = "Action Camera";
             return;
         }
 
@@ -338,6 +357,7 @@ public final class ActionCameraClientState {
         if (!(blockEntity instanceof ActionCameraBlockEntity actionCamera)) {
             mode = Mode.NONE;
             activeCameraPos = null;
+            activeCameraLabel = "Action Camera";
             return;
         }
 
