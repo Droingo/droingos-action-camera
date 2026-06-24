@@ -6,11 +6,10 @@ license="${mod_license}"
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
+logoFile="icon.png"
 authors="Droingo"
 description='''
 Droingo's Action Camera adds physical cinematic camera blocks for Minecraft.
-The first version supports static world cameras.
-Future versions will support Sable/Create Aeronautics sublevel-mounted action cameras and ReplayMod-friendly camera switching.
 '''
 
 [[mixins]]
