@@ -19,6 +19,7 @@ public abstract class SoundManagerMixin {
         }
 
         Camera vanillaSoundCamera = ActionCameraClientState.getVanillaSoundCameraOverride();
+
         if (vanillaSoundCamera == null) {
             return;
         }
@@ -28,8 +29,11 @@ public abstract class SoundManagerMixin {
 
             /*
              * Update the audio listener from the normal player/spectator camera,
-             * not the Action Camera. This prevents the OpenAL listener from being
-             * left sideways after exiting the cinematic camera.
+             * not the Action Camera.
+             *
+             * ActionCameraClientState also keeps this override alive for a few
+             * frames after exit, which prevents the listener orientation from
+             * being left sideways after closing the cinematic camera.
              */
             ((SoundManager) (Object) this).updateSource(vanillaSoundCamera);
         } finally {
