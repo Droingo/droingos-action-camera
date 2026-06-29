@@ -62,6 +62,7 @@ public final class ActionCameraPoseResolver {
          * wall-mounted camera head.
          */
         Vec3 slotOffset = ActionCameraMountSlot.cameraPoseOffset(attachFace, facing, mountSlot);
+        Vec3 extensionOffset = camera.getExtensionOffset();
 
         Quaternionf cameraRotation = new Quaternionf().rotationYXZ(
                 (float) Math.toRadians(-finalYaw),
@@ -76,9 +77,9 @@ public final class ActionCameraPoseResolver {
         ).rotate(cameraRotation);
 
         Vec3 worldPosition = Vec3.atCenterOf(pos).add(
-                slotOffset.x + camera.getOffsetX() + forwardViewOffset.x(),
-                slotOffset.y + camera.getOffsetY() + forwardViewOffset.y(),
-                slotOffset.z + camera.getOffsetZ() + forwardViewOffset.z()
+                slotOffset.x + camera.getOffsetX() + extensionOffset.x + forwardViewOffset.x(),
+                slotOffset.y + camera.getOffsetY() + extensionOffset.y + forwardViewOffset.y(),
+                slotOffset.z + camera.getOffsetZ() + extensionOffset.z + forwardViewOffset.z()
         );
 
         ActionCameraPose basePose = new ActionCameraPose(
@@ -98,7 +99,7 @@ public final class ActionCameraPoseResolver {
         );
     }
 
-    private static float yawForFacing(Direction facing) {
+    public static float yawForFacing(Direction facing) {
         return switch (facing) {
             case SOUTH -> 0.0F;
             case WEST -> 90.0F;

@@ -23,14 +23,18 @@ public final class ClientModEvents {
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(ActionCameraKeyMappings.TOGGLE_ACTION_CAMERA_VIEW);
+        event.register(ActionCameraKeyMappings.TOGGLE_EXTENSION_POLE_EDIT);
     }
 
     @SubscribeEvent
     public static void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
         event.register(ActionCameraClientModels.FLOOR_STAND);
         event.register(ActionCameraClientModels.FLOOR_HEAD);
+
         event.register(ActionCameraClientModels.WALL_STAND);
         event.register(ActionCameraClientModels.WALL_HEAD);
+
+        event.register(ActionCameraClientModels.EXTENSION_POLE);
     }
 
     @SubscribeEvent

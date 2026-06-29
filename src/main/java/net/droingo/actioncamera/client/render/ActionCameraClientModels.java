@@ -21,6 +21,10 @@ public final class ActionCameraClientModels {
             ResourceLocation.fromNamespaceAndPath(DroingoActionCamera.MOD_ID, "block/action_camera_wall_head")
     );
 
+    public static final ModelResourceLocation EXTENSION_POLE = ModelResourceLocation.standalone(
+            ResourceLocation.fromNamespaceAndPath(DroingoActionCamera.MOD_ID, "block/action_camera_extension_pole")
+    );
+
     private ActionCameraClientModels() {
     }
 }

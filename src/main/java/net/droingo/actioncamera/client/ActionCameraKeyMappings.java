@@ -16,6 +16,14 @@ public final class ActionCameraKeyMappings {
             CATEGORY
     );
 
+    public static final KeyMapping TOGGLE_EXTENSION_POLE_EDIT = new KeyMapping(
+            "key.droingo_action_camera.toggle_extension_pole_edit",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_V,
+            CATEGORY
+    );
+
     private ActionCameraKeyMappings() {
     }
 }

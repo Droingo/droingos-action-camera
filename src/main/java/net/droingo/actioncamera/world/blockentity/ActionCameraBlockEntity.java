@@ -11,9 +11,12 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 public final class ActionCameraBlockEntity extends BlockEntity {
+    public static final double MAX_EXTENSION_DISTANCE = 1.5D;
+
     private static final int MAX_CAMERA_NAME_LENGTH = 32;
 
     private double offsetX;
@@ -23,8 +26,14 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     private float yawOffset;
     private float pitchOffset;
     private float rollOffset;
+
     private float fovOverride;
     private float smoothing;
+
+    private boolean extensionEnabled;
+    private double extensionX;
+    private double extensionY;
+    private double extensionZ;
 
     private String cameraName = "Action Camera";
 
@@ -83,6 +92,26 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         return smoothing;
     }
 
+    public boolean isExtensionEnabled() {
+        return extensionEnabled;
+    }
+
+    public double getExtensionX() {
+        return extensionEnabled ? extensionX : 0.0D;
+    }
+
+    public double getExtensionY() {
+        return extensionEnabled ? extensionY : 0.0D;
+    }
+
+    public double getExtensionZ() {
+        return extensionEnabled ? extensionZ : 0.0D;
+    }
+
+    public Vec3 getExtensionOffset() {
+        return extensionEnabled ? new Vec3(extensionX, extensionY, extensionZ) : Vec3.ZERO;
+    }
+
     public String getCameraName() {
         return cameraName;
     }
@@ -98,6 +127,38 @@ public final class ActionCameraBlockEntity extends BlockEntity {
             float smoothing,
             String cameraName
     ) {
+        setCameraData(
+                offsetX,
+                offsetY,
+                offsetZ,
+                yawOffset,
+                pitchOffset,
+                rollOffset,
+                fovOverride,
+                smoothing,
+                cameraName,
+                extensionEnabled,
+                extensionX,
+                extensionY,
+                extensionZ
+        );
+    }
+
+    public void setCameraData(
+            double offsetX,
+            double offsetY,
+            double offsetZ,
+            float yawOffset,
+            float pitchOffset,
+            float rollOffset,
+            float fovOverride,
+            float smoothing,
+            String cameraName,
+            boolean extensionEnabled,
+            double extensionX,
+            double extensionY,
+            double extensionZ
+    ) {
         this.offsetX = Mth.clamp(offsetX, -0.5D, 0.5D);
         this.offsetY = Mth.clamp(offsetY, -0.5D, 0.5D);
         this.offsetZ = Mth.clamp(offsetZ, -0.5D, 0.5D);
@@ -108,13 +169,45 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         this.fovOverride = Mth.clamp(fovOverride, 0.0F, 170.0F);
         this.smoothing = Mth.clamp(smoothing, 0.0F, 0.95F);
+
         this.cameraName = sanitizeCameraName(cameraName);
+
+        this.extensionEnabled = extensionEnabled;
+        Vec3 clampedExtension = clampExtensionOffset(new Vec3(extensionX, extensionY, extensionZ));
+        this.extensionX = clampedExtension.x;
+        this.extensionY = clampedExtension.y;
+        this.extensionZ = clampedExtension.z;
 
         setChanged();
 
         if (level != null && !level.isClientSide()) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
         }
+    }
+
+    public void setExtensionData(boolean enabled, double x, double y, double z) {
+        Vec3 clampedExtension = clampExtensionOffset(new Vec3(x, y, z));
+
+        this.extensionEnabled = enabled;
+        this.extensionX = clampedExtension.x;
+        this.extensionY = clampedExtension.y;
+        this.extensionZ = clampedExtension.z;
+
+        setChanged();
+
+        if (level != null && !level.isClientSide()) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    public static Vec3 clampExtensionOffset(Vec3 offset) {
+        double length = offset.length();
+
+        if (length <= MAX_EXTENSION_DISTANCE || length <= 0.000001D) {
+            return offset;
+        }
+
+        return offset.scale(MAX_EXTENSION_DISTANCE / length);
     }
 
     private static String sanitizeCameraName(String name) {
@@ -147,6 +240,11 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         tag.putFloat("Smoothing", smoothing);
 
         tag.putString("CameraName", cameraName);
+
+        tag.putBoolean("ExtensionEnabled", extensionEnabled);
+        tag.putDouble("ExtensionX", extensionX);
+        tag.putDouble("ExtensionY", extensionY);
+        tag.putDouble("ExtensionZ", extensionZ);
     }
 
     @Override
@@ -169,6 +267,18 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         } else {
             cameraName = "Action Camera";
         }
+
+        extensionEnabled = tag.getBoolean("ExtensionEnabled");
+
+        Vec3 clampedExtension = clampExtensionOffset(new Vec3(
+                tag.getDouble("ExtensionX"),
+                tag.getDouble("ExtensionY"),
+                tag.getDouble("ExtensionZ")
+        ));
+
+        extensionX = clampedExtension.x;
+        extensionY = clampedExtension.y;
+        extensionZ = clampedExtension.z;
 
         /*
          * Re-register after NBT load too. This covers chunk/replay reload paths

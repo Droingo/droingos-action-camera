@@ -34,6 +34,7 @@ public final class ModNetworking {
             }
 
             double maxDistance = 64.0D;
+
             if (player.distanceToSqr(Vec3.atCenterOf(payload.pos())) > maxDistance * maxDistance) {
                 return;
             }
@@ -48,7 +49,11 @@ public final class ModNetworking {
                         payload.rollOffset(),
                         payload.fovOverride(),
                         payload.smoothing(),
-                        payload.cameraName()
+                        payload.cameraName(),
+                        payload.extensionEnabled(),
+                        payload.extensionX(),
+                        payload.extensionY(),
+                        payload.extensionZ()
                 );
             }
         });

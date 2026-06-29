@@ -21,6 +21,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.model.data.ModelData;
+import org.joml.Quaternionf;
 
 public final class ActionCameraBlockEntityRenderer implements BlockEntityRenderer<ActionCameraBlockEntity> {
     private static final double BLOCK_CENTER = 0.5D;
@@ -32,6 +33,12 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
     private static final double WALL_HEAD_HINGE_X = 8.0D / 16.0D;
     private static final double WALL_HEAD_HINGE_Y = 7.25D / 16.0D;
     private static final double WALL_HEAD_HINGE_Z = 14.6D / 16.0D;
+
+    /*
+     * Stops a pole being rendered just because extension mode was toggled.
+     * Player must actually move the camera head by a visible amount.
+     */
+    private static final double MIN_VISIBLE_EXTENSION_DISTANCE = 0.03D;
 
     public ActionCameraBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
     }
@@ -46,6 +53,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
             int packedOverlay
     ) {
         BlockPos activeCameraPos = ActionCameraClientState.getActiveCameraPos();
+
         if (ActionCameraClientState.isActive()
                 && activeCameraPos != null
                 && activeCameraPos.equals(blockEntity.getBlockPos())) {
@@ -69,18 +77,26 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         BakedModel standModel = getStandModel(attachFace);
         BakedModel headModel = getHeadModel(attachFace);
 
+        if (hasVisibleExtension(blockEntity)) {
+            renderExtensionPole(
+                    blockEntity,
+                    poseStack,
+                    bufferSource,
+                    packedLight,
+                    packedOverlay,
+                    state,
+                    attachFace,
+                    facing,
+                    mountSlot
+            );
+        }
+
+        /*
+         * Stand/base stays at the original mounted position.
+         */
         poseStack.pushPose();
 
-        /*
-         * Stage 1:
-         * Move the whole assembly to the exact 3x3 placement slot.
-         */
         applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
-
-        /*
-         * Stage 2:
-         * Rotate the placed model into its floor/wall/ceiling orientation.
-         */
         applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
 
         renderBakedModel(
@@ -93,8 +109,21 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
                 blockEntity.getBlockPos().asLong()
         );
 
+        poseStack.popPose();
+
+        /*
+         * Head moves by the extension offset, then keeps using the normal
+         * mount rotation + live yaw/pitch/roll.
+         */
         poseStack.pushPose();
 
+        applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
+        poseStack.translate(
+                blockEntity.getExtensionX(),
+                blockEntity.getExtensionY(),
+                blockEntity.getExtensionZ()
+        );
+        applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
         applyLiveHeadRotation(poseStack, attachFace, blockEntity);
 
         renderBakedModel(
@@ -108,7 +137,14 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         );
 
         poseStack.popPose();
-        poseStack.popPose();
+    }
+
+    private static boolean hasVisibleExtension(ActionCameraBlockEntity blockEntity) {
+        if (!blockEntity.isExtensionEnabled()) {
+            return false;
+        }
+
+        return blockEntity.getExtensionOffset().length() >= MIN_VISIBLE_EXTENSION_DISTANCE;
     }
 
     private static BakedModel getStandModel(AttachFace attachFace) {
@@ -129,6 +165,12 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
                 );
     }
 
+    private static BakedModel getPoleModel() {
+        return Minecraft.getInstance()
+                .getModelManager()
+                .getModel(ActionCameraClientModels.EXTENSION_POLE);
+    }
+
     private static void applyWorldAssemblyOffset(
             PoseStack poseStack,
             AttachFace attachFace,
@@ -143,6 +185,146 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
                 slotOffset.y + blockEntity.getOffsetY(),
                 slotOffset.z + blockEntity.getOffsetZ()
         );
+    }
+
+    private static void renderExtensionPole(
+            ActionCameraBlockEntity blockEntity,
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            int packedLight,
+            int packedOverlay,
+            BlockState state,
+            AttachFace attachFace,
+            Direction facing,
+            int mountSlot
+    ) {
+        Vec3 start = getHeadHingeBlockLocal(
+                blockEntity,
+                attachFace,
+                facing,
+                mountSlot
+        );
+
+        Vec3 end = start.add(blockEntity.getExtensionOffset());
+        Vec3 direction = end.subtract(start);
+
+        double length = direction.length();
+
+        if (length < MIN_VISIBLE_EXTENSION_DISTANCE) {
+            return;
+        }
+
+        Vec3 normalizedDirection = direction.normalize();
+
+        Quaternionf rotation = new Quaternionf().rotationTo(
+                0.0F,
+                0.0F,
+                1.0F,
+                (float) normalizedDirection.x,
+                (float) normalizedDirection.y,
+                (float) normalizedDirection.z
+        );
+
+        poseStack.pushPose();
+
+        /*
+         * The pole model is authored as:
+         * - centered on X/Y
+         * - one block long along +Z
+         * - starting at Z 0 and ending at Z 1
+         *
+         * So we:
+         * 1. move to hinge start
+         * 2. rotate +Z to point at the camera head
+         * 3. scale Z to the real extension length
+         * 4. shift model X/Y so its centre sits on the hinge line
+         */
+        poseStack.translate(start.x, start.y, start.z);
+        poseStack.mulPose(rotation);
+        poseStack.scale(1.0F, 1.0F, (float) length);
+        poseStack.translate(-0.5D, -0.5D, 0.0D);
+
+        renderBakedModel(
+                getPoleModel(),
+                poseStack,
+                bufferSource,
+                packedLight,
+                packedOverlay,
+                state,
+                blockEntity.getBlockPos().asLong() + 2L
+        );
+
+        poseStack.popPose();
+    }
+
+    private static Vec3 getHeadHingeBlockLocal(
+            ActionCameraBlockEntity blockEntity,
+            AttachFace attachFace,
+            Direction facing,
+            int mountSlot
+    ) {
+        Vec3 slotOffset = ActionCameraMountSlot.worldAssemblyOffset(attachFace, facing, mountSlot);
+
+        Vec3 hingeBeforeMountRotation = new Vec3(
+                hingeXForAttachFace(attachFace),
+                hingeYForAttachFace(attachFace),
+                hingeZForAttachFace(attachFace)
+        );
+
+        Vec3 hingeAfterMountRotation = rotatePointAroundBlockCenter(
+                hingeBeforeMountRotation,
+                attachFace,
+                facing
+        );
+
+        return new Vec3(
+                slotOffset.x + blockEntity.getOffsetX() + hingeAfterMountRotation.x,
+                slotOffset.y + blockEntity.getOffsetY() + hingeAfterMountRotation.y,
+                slotOffset.z + blockEntity.getOffsetZ() + hingeAfterMountRotation.z
+        );
+    }
+
+    private static Vec3 rotatePointAroundBlockCenter(
+            Vec3 point,
+            AttachFace attachFace,
+            Direction facing
+    ) {
+        Vec3 shifted = point.subtract(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
+
+        Vec3 rotated = switch (attachFace) {
+            case FLOOR -> rotateY(shifted, yRotationForFacing(facing));
+
+            case WALL -> rotateY(shifted, wallYRotationForFacing(facing));
+
+            case CEILING -> {
+                Vec3 yRotated = rotateY(shifted, yRotationForFacing(facing));
+                yield rotateX(yRotated, 180.0F);
+            }
+        };
+
+        return rotated.add(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
+    }
+
+    private static Vec3 rotateY(Vec3 vec, float degrees) {
+        double radians = Math.toRadians(degrees);
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+
+        double x = vec.x * cos + vec.z * sin;
+        double z = -vec.x * sin + vec.z * cos;
+
+        return new Vec3(x, vec.y, z);
+    }
+
+    private static Vec3 rotateX(Vec3 vec, float degrees) {
+        double radians = Math.toRadians(degrees);
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+
+        double y = vec.y * cos - vec.z * sin;
+        double z = vec.y * sin + vec.z * cos;
+
+        return new Vec3(vec.x, y, z);
     }
 
     private static void applyBaseMountTransformAroundBlockCenter(

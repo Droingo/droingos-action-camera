@@ -10,5 +10,5 @@
   "tooltip.droingo_action_camera.action_camera.line_3": "Press C to enter or cycle nearby loaded cameras.",
 
   "key.categories.droingo_action_camera": "Droingo's Action Camera",
-  "key.droingo_action_camera.toggle_action_camera_view": "Toggle Action Camera View"
-}
+  "key.droingo_action_camera.toggle_action_camera_view": "Toggle Action Camera View",
+  "key.droingo_action_camera.toggle_extension_pole_edit": "Toggle Extension Pole Edit"   }

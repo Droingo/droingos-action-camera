@@ -20,10 +20,12 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -36,12 +38,6 @@ import java.util.Set;
         value = Dist.CLIENT
 )
 public final class ClientGameEvents {
-    /*
-     * Normal-world camera discovery range.
-     *
-     * This is only a fallback now. The main discovery path is the
-     * ActionCameraBlockEntity auto-registering when it loads.
-     */
     private static final int CAMERA_CYCLE_CHUNK_RADIUS = 10;
 
     private ClientGameEvents() {
@@ -50,7 +46,31 @@ public final class ClientGameEvents {
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         handleViewKeybind();
+        handleExtensionPoleKeybind();
         ActionCameraClientState.clientTick();
+    }
+
+    /*
+     * FIX:
+     * When extension pole edit mode is active, WASD/Space/Ctrl are camera-head
+     * controls, not player controls.
+     */
+    @SubscribeEvent
+    public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
+        if (!ActionCameraClientState.isExtensionEditMode()) {
+            return;
+        }
+
+        event.getInput().forwardImpulse = 0.0F;
+        event.getInput().leftImpulse = 0.0F;
+
+        event.getInput().up = false;
+        event.getInput().down = false;
+        event.getInput().left = false;
+        event.getInput().right = false;
+
+        event.getInput().jumping = false;
+        event.getInput().shiftKeyDown = false;
     }
 
     private static void handleViewKeybind() {
@@ -61,24 +81,18 @@ public final class ClientGameEvents {
                 return;
             }
 
-            /*
-             * Do not let C interfere with right-click edit mode.
-             * Shift is the save/exit control for editing.
-             */
             if (ActionCameraClientState.isEditingCamera()) {
                 return;
             }
 
             BlockPos lookedAtCamera = getLookedAtCameraPos(minecraft);
+
             if (lookedAtCamera != null) {
                 ActionCameraKnownCameras.register(lookedAtCamera);
             }
 
             List<BlockPos> cameras = collectKnownCameraPositions(minecraft);
 
-            /*
-             * If not already viewing, prefer the camera the player is looking at.
-             */
             if (!ActionCameraClientState.isViewingCamera()) {
                 if (lookedAtCamera != null) {
                     ActionCameraClientState.startViewing(
@@ -94,19 +108,17 @@ public final class ClientGameEvents {
                 }
 
                 BlockPos firstCamera = cameras.get(0);
+
                 ActionCameraClientState.startViewing(
                         firstCamera,
                         labelForCamera(cameras, firstCamera)
                 );
+
                 return;
             }
 
-            /*
-             * Already viewing:
-             * C cycles to the next auto-discovered camera.
-             * Shift exits.
-             */
             BlockPos current = ActionCameraClientState.getActiveCameraPos();
+
             if (current != null) {
                 ActionCameraKnownCameras.register(current);
             }
@@ -120,11 +132,43 @@ public final class ClientGameEvents {
             int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % cameras.size();
 
             BlockPos nextCamera = cameras.get(nextIndex);
+
             ActionCameraClientState.startViewing(
                     nextCamera,
                     labelForCamera(cameras, nextCamera)
             );
         }
+    }
+
+    private static void handleExtensionPoleKeybind() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        while (ActionCameraKeyMappings.TOGGLE_EXTENSION_POLE_EDIT.consumeClick()) {
+            if (minecraft.player == null || minecraft.level == null) {
+                return;
+            }
+
+            if (!ActionCameraClientState.isEditingCamera()) {
+                minecraft.player.displayClientMessage(
+                        Component.literal("Right-click an Action Camera first, then press V to edit the extension pole."),
+                        true
+                );
+                return;
+            }
+
+            if (isAltDown(minecraft)) {
+                ActionCameraClientState.toggleExtensionArm();
+            } else {
+                ActionCameraClientState.toggleExtensionEditMode();
+            }
+        }
+    }
+
+    private static boolean isAltDown(Minecraft minecraft) {
+        long window = minecraft.getWindow().getWindow();
+
+        return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_ALT) == GLFW.GLFW_PRESS
+                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_ALT) == GLFW.GLFW_PRESS;
     }
 
     private static String labelForCamera(List<BlockPos> cameras, BlockPos pos) {
@@ -143,11 +187,13 @@ public final class ClientGameEvents {
         }
 
         HitResult hitResult = minecraft.hitResult;
+
         if (!(hitResult instanceof BlockHitResult blockHitResult)) {
             return null;
         }
 
         BlockPos pos = blockHitResult.getBlockPos();
+
         if (minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity) {
             return pos.immutable();
         }
@@ -162,18 +208,8 @@ public final class ClientGameEvents {
             return new ArrayList<>();
         }
 
-        /*
-         * Main path:
-         * Every loaded ActionCameraBlockEntity registers itself here.
-         * This is what fixes ReplayMod/server/Sable cycling without right-clicking.
-         */
         cameraSet.addAll(ActionCameraKnownCameras.snapshot());
 
-        /*
-         * Fallback path:
-         * Also scan nearby normal-world chunks, so cameras are discovered even if
-         * a load callback was missed by vanilla, ReplayMod, or another mod.
-         */
         ChunkPos playerChunk = new ChunkPos(minecraft.player.blockPosition());
 
         for (int chunkX = playerChunk.x - CAMERA_CYCLE_CHUNK_RADIUS; chunkX <= playerChunk.x + CAMERA_CYCLE_CHUNK_RADIUS; chunkX++) {
@@ -194,13 +230,6 @@ public final class ClientGameEvents {
             }
         }
 
-        /*
-         * Validate candidates.
-         *
-         * Important: do not reject using level.isLoaded(pos) first. Sable plot
-         * positions and replay chunks can behave differently. The actual source of
-         * truth is whether the client/replay level can return our block entity.
-         */
         List<BlockPos> cameras = new ArrayList<>();
 
         for (BlockPos pos : cameraSet) {
@@ -213,13 +242,11 @@ public final class ClientGameEvents {
 
         Vec3 playerPos = minecraft.player.position();
 
-        cameras.sort(Comparator.comparingDouble(pos ->
-                SableCompanion.INSTANCE.distanceSquaredWithSubLevels(
-                        minecraft.level,
-                        Vec3.atCenterOf(pos),
-                        playerPos
-                )
-        ));
+        cameras.sort(Comparator.comparingDouble(pos -> SableCompanion.INSTANCE.distanceSquaredWithSubLevels(
+                minecraft.level,
+                Vec3.atCenterOf(pos),
+                playerPos
+        )));
 
         return cameras;
     }
@@ -235,6 +262,7 @@ public final class ClientGameEvents {
         }
 
         Minecraft minecraft = Minecraft.getInstance();
+
         if (minecraft.player == null || minecraft.level == null || event.getEntity() != minecraft.player) {
             return;
         }
@@ -244,6 +272,7 @@ public final class ClientGameEvents {
         if (minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity) {
             ActionCameraKnownCameras.register(pos);
             ActionCameraClientState.startEditing(pos);
+
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
         }
@@ -252,6 +281,7 @@ public final class ClientGameEvents {
     @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
         ActionCameraPose pose = ActionCameraClientState.getLastAppliedPose();
+
         if (pose == null || !ActionCameraClientState.isActive()) {
             return;
         }
@@ -274,9 +304,6 @@ public final class ClientGameEvents {
             return;
         }
 
-        /*
-         * Lock to the user's normal FOV setting while Action Camera is active.
-         */
         Minecraft minecraft = Minecraft.getInstance();
         event.setFOV(minecraft.options.fov().get());
     }
@@ -301,13 +328,8 @@ public final class ClientGameEvents {
 
         int x = 8;
         int y = 8;
-
         int textWidth = minecraft.font.width(label);
 
-        /*
-         * Small translucent backing so it stays readable at night, in ReplayMod,
-         * and over bright skies.
-         */
         guiGraphics.fill(
                 x - 4,
                 y - 3,
