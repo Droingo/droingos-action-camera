@@ -91,6 +91,26 @@ public final class ActionCameraClientState {
         return mode == Mode.VIEW && activeCameraPos != null;
     }
 
+    public static boolean isExtensionArmEnabledForHud() {
+        return isEditingCamera() && editExtensionEnabled;
+    }
+
+    public static boolean isExtensionPlacementModeForHud() {
+        return isEditingCamera() && extensionEditMode;
+    }
+
+    public static double getExtensionDistanceForHud() {
+        if (!isEditingCamera()) {
+            return 0.0D;
+        }
+
+        return Math.sqrt(
+                editExtensionX * editExtensionX
+                        + editExtensionY * editExtensionY
+                        + editExtensionZ * editExtensionZ
+        );
+    }
+
     public static boolean isEditingCamera() {
         return mode == Mode.EDIT && activeCameraPos != null;
     }
@@ -212,10 +232,7 @@ public final class ActionCameraClientState {
         smoothedPose = null;
         lastAppliedPose = null;
 
-        minecraft.player.displayClientMessage(
-                Component.literal("Action Camera edit mode. Mouse aims. V edits arm. Alt+V toggles arm off/on. Shift saves/exits."),
-                true
-        );
+
     }
 
     public static void stopViewing() {
@@ -298,15 +315,6 @@ public final class ActionCameraClientState {
             editExtensionEnabled = true;
             applyLiveEditToClientBlockEntity();
             dirty = true;
-
-            if (minecraft.player != null) {
-                minecraft.player.displayClientMessage(
-                        Component.literal("Extension pole edit ON. WASD moves, Space up, Ctrl down, Shift disabled while editing pole."),
-                        true
-                );
-            }
-        } else if (minecraft.player != null) {
-            minecraft.player.displayClientMessage(Component.literal("Extension pole edit OFF"), true);
         }
     }
 
@@ -339,12 +347,7 @@ public final class ActionCameraClientState {
             dirty = true;
             saveCooldownTicks = 0;
 
-            if (minecraft.player != null) {
-                minecraft.player.displayClientMessage(
-                        Component.literal("Extension arm OFF. Camera reset to stand."),
-                        true
-                );
-            }
+
 
             return;
         }
@@ -365,12 +368,7 @@ public final class ActionCameraClientState {
         dirty = true;
         saveCooldownTicks = 0;
 
-        if (minecraft.player != null) {
-            minecraft.player.displayClientMessage(
-                    Component.literal("Extension arm ON. WASD moves, Space up, Ctrl down."),
-                    true
-            );
-        }
+
     }
 
     public static void clientTick() {

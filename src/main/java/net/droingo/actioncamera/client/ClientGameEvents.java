@@ -278,6 +278,196 @@ public final class ClientGameEvents {
         }
     }
 
+    private static void renderCameraViewingLabel(GuiGraphics guiGraphics) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        String label = ActionCameraClientState.getActiveCameraLabel();
+
+        int x = 8;
+        int y = 8;
+        int textWidth = minecraft.font.width(label);
+
+        guiGraphics.fill(
+                x - 4,
+                y - 3,
+                x + textWidth + 5,
+                y + 11,
+                0x90000000
+        );
+
+        guiGraphics.drawString(
+                minecraft.font,
+                label,
+                x,
+                y,
+                0xFFFFFF,
+                false
+        );
+    }
+
+    private static void renderCameraEditOverlay(GuiGraphics guiGraphics) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        int width = minecraft.getWindow().getGuiScaledWidth();
+        int height = minecraft.getWindow().getGuiScaledHeight();
+
+        renderRuleOfThirds(guiGraphics, width, height);
+        renderEditHud(guiGraphics, minecraft, width, height);
+    }
+
+    private static void renderRuleOfThirds(GuiGraphics guiGraphics, int width, int height) {
+        int lineColor = 0x55FFFFFF;
+
+        int verticalOne = width / 3;
+        int verticalTwo = (width * 2) / 3;
+
+        int horizontalOne = height / 3;
+        int horizontalTwo = (height * 2) / 3;
+
+        guiGraphics.fill(verticalOne, 0, verticalOne + 1, height, lineColor);
+        guiGraphics.fill(verticalTwo, 0, verticalTwo + 1, height, lineColor);
+
+        guiGraphics.fill(0, horizontalOne, width, horizontalOne + 1, lineColor);
+        guiGraphics.fill(0, horizontalTwo, width, horizontalTwo + 1, lineColor);
+    }
+
+
+    private static void renderEditHud(
+            GuiGraphics guiGraphics,
+            Minecraft minecraft,
+            int width,
+            int height
+    ) {
+        boolean poleAttached = ActionCameraClientState.isExtensionArmEnabledForHud();
+        boolean polePlacement = ActionCameraClientState.isExtensionPlacementModeForHud();
+        double distance = ActionCameraClientState.getExtensionDistanceForHud();
+
+        int x = 8;
+        int y = 8;
+
+        String title = "Action Camera Edit";
+        String poleStatus = poleAttached
+                ? "Extension Pole: Attached"
+                : "Extension Pole: Detached";
+
+        String polePlacementStatus = polePlacement
+                ? "Pole Placement: ACTIVE"
+                : "Pole Placement: Off";
+
+        String distanceText = String.format(java.util.Locale.ROOT, "Pole Distance: %.2f blocks", distance);
+
+        String[] lines = new String[] {
+                title,
+                poleStatus,
+                polePlacementStatus,
+                distanceText,
+                "",
+                "Mouse: Aim camera",
+                "V: Enter/exit pole placement",
+                "Alt + V: Attach/detach pole",
+                "WASD: Move camera head",
+                "Space / Ctrl: Up / Down",
+                polePlacement ? "Shift: Disabled while placing pole" : "Shift: Save and exit"
+        };
+
+        int maxWidth = 0;
+
+        for (String line : lines) {
+            maxWidth = Math.max(maxWidth, minecraft.font.width(line));
+        }
+
+        int lineHeight = 10;
+        int padding = 6;
+
+        int panelWidth = maxWidth + padding * 2;
+        int panelHeight = lines.length * lineHeight + padding * 2;
+
+        guiGraphics.fill(
+                x - padding,
+                y - padding,
+                x - padding + panelWidth,
+                y - padding + panelHeight,
+                0xB0000000
+        );
+
+        /*
+         * Small left accent strip:
+         * green = pole attached
+         * grey = pole detached
+         */
+        guiGraphics.fill(
+                x - padding,
+                y - padding,
+                x - padding + 2,
+                y - padding + panelHeight,
+                poleAttached ? 0xFF66CC66 : 0xFF777777
+        );
+
+        int drawY = y;
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+
+            int color;
+
+            if (i == 0) {
+                color = 0xFFFFFF;
+            } else if (line.startsWith("Extension Pole:")) {
+                color = poleAttached ? 0x88FF88 : 0xCCCCCC;
+            } else if (line.startsWith("Pole Placement:")) {
+                color = polePlacement ? 0xFFD966 : 0xCCCCCC;
+            } else if (line.startsWith("Shift: Disabled")) {
+                color = 0xFFAA66;
+            } else {
+                color = 0xDDDDDD;
+            }
+
+            guiGraphics.drawString(
+                    minecraft.font,
+                    line,
+                    x,
+                    drawY,
+                    color,
+                    false
+            );
+
+            drawY += lineHeight;
+        }
+
+        renderEditModeTag(guiGraphics, minecraft, width, height, polePlacement);
+    }
+
+    private static void renderEditModeTag(
+            GuiGraphics guiGraphics,
+            Minecraft minecraft,
+            int width,
+            int height,
+            boolean polePlacement
+    ) {
+        String text = polePlacement ? "POLE PLACEMENT" : "CAMERA AIM";
+
+        int textWidth = minecraft.font.width(text);
+        int x = (width - textWidth) / 2;
+        int y = 8;
+
+        guiGraphics.fill(
+                x - 6,
+                y - 4,
+                x + textWidth + 6,
+                y + 12,
+                0xA0000000
+        );
+
+        guiGraphics.drawString(
+                minecraft.font,
+                text,
+                x,
+                y,
+                polePlacement ? 0xFFD966 : 0xFFFFFF,
+                false
+        );
+    }
+
     @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
         ActionCameraPose pose = ActionCameraClientState.getLastAppliedPose();
@@ -317,34 +507,13 @@ public final class ClientGameEvents {
 
     @SubscribeEvent
     public static void onRenderGuiPost(RenderGuiEvent.Post event) {
-        if (!ActionCameraClientState.isViewingCamera()) {
+        if (ActionCameraClientState.isEditingCamera()) {
+            renderCameraEditOverlay(event.getGuiGraphics());
             return;
         }
 
-        Minecraft minecraft = Minecraft.getInstance();
-        GuiGraphics guiGraphics = event.getGuiGraphics();
-
-        String label = ActionCameraClientState.getActiveCameraLabel();
-
-        int x = 8;
-        int y = 8;
-        int textWidth = minecraft.font.width(label);
-
-        guiGraphics.fill(
-                x - 4,
-                y - 3,
-                x + textWidth + 5,
-                y + 11,
-                0x90000000
-        );
-
-        guiGraphics.drawString(
-                minecraft.font,
-                label,
-                x,
-                y,
-                0xFFFFFF,
-                false
-        );
+        if (ActionCameraClientState.isViewingCamera()) {
+            renderCameraViewingLabel(event.getGuiGraphics());
+        }
     }
 }
