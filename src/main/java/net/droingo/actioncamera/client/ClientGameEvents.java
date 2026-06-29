@@ -17,6 +17,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
+import net.droingo.actioncamera.client.gui.ActionCameraRenameScreen;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -47,7 +48,55 @@ public final class ClientGameEvents {
     public static void onClientTick(ClientTickEvent.Post event) {
         handleViewKeybind();
         handleExtensionPoleKeybind();
+        handleRenameCameraKeybind();
+        handleEditOverlayModeKeybind();
         ActionCameraClientState.clientTick();
+    }
+
+    private static void handleRenameCameraKeybind() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        while (ActionCameraKeyMappings.RENAME_ACTION_CAMERA.consumeClick()) {
+            if (minecraft.player == null || minecraft.level == null) {
+                return;
+            }
+
+            if (!ActionCameraClientState.isEditingCamera()) {
+                return;
+            }
+
+            ActionCameraRenameScreen.open();
+        }
+    }
+
+    private static void handleEditOverlayModeKeybind() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        while (ActionCameraKeyMappings.CYCLE_EDIT_OVERLAY_MODE.consumeClick()) {
+            if (minecraft.player == null || minecraft.level == null) {
+                return;
+            }
+
+            if (!ActionCameraClientState.isEditingCamera()) {
+                return;
+            }
+
+            ActionCameraClientPreferences.EditOverlayMode mode =
+                    ActionCameraClientPreferences.cycleEditOverlayMode();
+
+            minecraft.player.displayClientMessage(
+                    Component.literal("Camera overlay: " + overlayModeLabel(mode)),
+                    true
+            );
+        }
+    }
+
+    private static String overlayModeLabel(ActionCameraClientPreferences.EditOverlayMode mode) {
+        return switch (mode) {
+            case FULL -> "Full";
+            case SIMPLE -> "Simple";
+            case OFF -> "Off";
+        };
     }
 
     /*
@@ -172,6 +221,23 @@ public final class ClientGameEvents {
     }
 
     private static String labelForCamera(List<BlockPos> cameras, BlockPos pos) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.level != null
+                && minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity camera) {
+            String customName = camera.getCameraName();
+
+            /*
+             * "Action Camera" is the internal/default saved name.
+             * For unrenamed cameras, keep showing generated Cam 1 / Cam 2 / Cam 3.
+             */
+            if (customName != null
+                    && !customName.isBlank()
+                    && !"Action Camera".equals(customName)) {
+                return customName.trim();
+            }
+        }
+
         int index = cameras.indexOf(pos);
 
         if (index < 0) {
@@ -311,8 +377,27 @@ public final class ClientGameEvents {
         int width = minecraft.getWindow().getGuiScaledWidth();
         int height = minecraft.getWindow().getGuiScaledHeight();
 
-        renderRuleOfThirds(guiGraphics, width, height);
-        renderEditHud(guiGraphics, minecraft, width, height);
+        ActionCameraClientPreferences.EditOverlayMode mode =
+                ActionCameraClientPreferences.getEditOverlayMode();
+
+        switch (mode) {
+            case FULL -> {
+                renderRuleOfThirds(guiGraphics, width, height);
+                renderEditHud(guiGraphics, minecraft, width, height);
+            }
+
+            case SIMPLE -> {
+                renderRuleOfThirds(guiGraphics, width, height);
+                renderSimpleEditHud(guiGraphics, minecraft, width, height);
+            }
+
+            case OFF -> {
+                /*
+                 * Fully hidden edit overlay.
+                 * Camera controls still work.
+                 */
+            }
+        }
     }
 
     private static void renderRuleOfThirds(GuiGraphics guiGraphics, int width, int height) {
@@ -363,10 +448,12 @@ public final class ClientGameEvents {
                 distanceText,
                 "",
                 "Mouse: Aim camera",
+                "R: Rename camera",
                 "V: Enter/exit pole placement",
                 "Alt + V: Attach/detach pole",
                 "WASD: Move camera head",
                 "Space / Ctrl: Up / Down",
+                "H: Overlay Full/Simple/Off",
                 polePlacement ? "Shift: Disabled while placing pole" : "Shift: Save and exit"
         };
 
@@ -435,6 +522,56 @@ public final class ClientGameEvents {
         }
 
         renderEditModeTag(guiGraphics, minecraft, width, height, polePlacement);
+    }
+
+    private static void renderSimpleEditHud(
+            GuiGraphics guiGraphics,
+            Minecraft minecraft,
+            int width,
+            int height
+    ) {
+        boolean poleAttached = ActionCameraClientState.isExtensionArmEnabledForHud();
+        boolean polePlacement = ActionCameraClientState.isExtensionPlacementModeForHud();
+
+        String poleStatus = poleAttached ? "Pole Attached" : "Pole Detached";
+        String placementStatus = polePlacement ? "Placing Pole" : "Aiming Camera";
+
+        String text = placementStatus
+                + "  |  "
+                + poleStatus
+                + "  |  H Overlay";
+
+        int textWidth = minecraft.font.width(text);
+
+        int x = (width - textWidth) / 2;
+        int y = height - 22;
+
+        guiGraphics.fill(
+                x - 6,
+                y - 4,
+                x + textWidth + 6,
+                y + 12,
+                0xA0000000
+        );
+
+        int accentColor = poleAttached ? 0xFF66CC66 : 0xFF777777;
+
+        guiGraphics.fill(
+                x - 6,
+                y - 4,
+                x - 4,
+                y + 12,
+                accentColor
+        );
+
+        guiGraphics.drawString(
+                minecraft.font,
+                text,
+                x,
+                y,
+                polePlacement ? 0xFFD966 : 0xFFFFFF,
+                false
+        );
     }
 
     private static void renderEditModeTag(

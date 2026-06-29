@@ -600,6 +600,50 @@ public final class ActionCameraClientState {
         return 0.0F;
     }
 
+    public static String getEditingCameraNameForRenameScreen() {
+        if (!isEditingCamera()) {
+            return "Action Camera";
+        }
+
+        return editCameraName == null || editCameraName.isBlank()
+                ? "Action Camera"
+                : editCameraName;
+    }
+
+    public static void renameEditingCamera(String newName) {
+        if (!isEditingCamera()) {
+            return;
+        }
+
+        editCameraName = sanitizeClientCameraName(newName);
+        activeCameraLabel = editCameraName;
+
+        applyLiveEditToClientBlockEntity();
+
+        dirty = true;
+        saveCooldownTicks = 0;
+
+        /*
+         * Send immediately so the name is synced even before the normal edit tick.
+         * stopEditing(true) will send again later, which is harmless.
+         */
+        sendUpdateToServer();
+    }
+
+    private static String sanitizeClientCameraName(String name) {
+        if (name == null || name.isBlank()) {
+            return "Action Camera";
+        }
+
+        String trimmed = name.trim();
+
+        if (trimmed.length() > 32) {
+            return trimmed.substring(0, 32);
+        }
+
+        return trimmed;
+    }
+
     public static void applyToCamera(Camera camera, float partialTick) {
         if (!isActive()) {
             return;

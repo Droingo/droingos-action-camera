@@ -24,6 +24,8 @@ public final class ClientModEvents {
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(ActionCameraKeyMappings.TOGGLE_ACTION_CAMERA_VIEW);
         event.register(ActionCameraKeyMappings.TOGGLE_EXTENSION_POLE_EDIT);
+        event.register(ActionCameraKeyMappings.RENAME_ACTION_CAMERA);
+        event.register(ActionCameraKeyMappings.CYCLE_EDIT_OVERLAY_MODE);
     }
 
     @SubscribeEvent

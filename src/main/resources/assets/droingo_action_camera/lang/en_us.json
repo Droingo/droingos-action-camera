@@ -11,4 +11,7 @@
 
   "key.categories.droingo_action_camera": "Droingo's Action Camera",
   "key.droingo_action_camera.toggle_action_camera_view": "Toggle Action Camera View",
-  "key.droingo_action_camera.toggle_extension_pole_edit": "Toggle Extension Pole Edit"   }
+  "key.droingo_action_camera.toggle_extension_pole_edit": "Toggle Extension Pole Edit",
+  "key.droingo_action_camera.rename_action_camera": "Rename Action Camera",
+  "key.droingo_action_camera.cycle_edit_overlay_mode": "Cycle Camera Edit Overlay"
+}

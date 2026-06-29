@@ -54,9 +54,23 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
     ) {
         BlockPos activeCameraPos = ActionCameraClientState.getActiveCameraPos();
 
-        if (ActionCameraClientState.isActive()
+        boolean isActiveCamera = ActionCameraClientState.isActive()
                 && activeCameraPos != null
-                && activeCameraPos.equals(blockEntity.getBlockPos())) {
+                && activeCameraPos.equals(blockEntity.getBlockPos());
+
+        boolean hasVisibleExtension = hasVisibleExtension(blockEntity);
+
+        /*
+         * Normal behaviour:
+         * If the player is currently viewing/editing this camera and it has no
+         * visible extension pole, hide the whole model like before.
+         *
+         * Extension behaviour:
+         * If the player is currently viewing/editing this camera and it DOES have
+         * a visible extension pole, keep rendering the base + pole, but hide the
+         * camera head itself so you don't see the camera body you are looking through.
+         */
+        if (isActiveCamera && !hasVisibleExtension) {
             return;
         }
 
@@ -77,7 +91,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         BakedModel standModel = getStandModel(attachFace);
         BakedModel headModel = getHeadModel(attachFace);
 
-        if (hasVisibleExtension(blockEntity)) {
+        if (hasVisibleExtension) {
             renderExtensionPole(
                     blockEntity,
                     poseStack,
@@ -93,6 +107,9 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         /*
          * Stand/base stays at the original mounted position.
+         *
+         * This now still renders for the active camera ONLY when a visible
+         * extension pole exists.
          */
         poseStack.pushPose();
 
@@ -112,31 +129,42 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         poseStack.popPose();
 
         /*
-         * Head moves by the extension offset, then keeps using the normal
-         * mount rotation + live yaw/pitch/roll.
+         * Hide the camera head when this is the active camera.
+         *
+         * Inactive camera:
+         * - render stand
+         * - render pole if present
+         * - render head
+         *
+         * Active camera with pole:
+         * - render stand
+         * - render pole
+         * - do NOT render head
          */
-        poseStack.pushPose();
+        if (!isActiveCamera) {
+            poseStack.pushPose();
 
-        applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
-        poseStack.translate(
-                blockEntity.getExtensionX(),
-                blockEntity.getExtensionY(),
-                blockEntity.getExtensionZ()
-        );
-        applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
-        applyLiveHeadRotation(poseStack, attachFace, blockEntity);
+            applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
+            poseStack.translate(
+                    blockEntity.getExtensionX(),
+                    blockEntity.getExtensionY(),
+                    blockEntity.getExtensionZ()
+            );
+            applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
+            applyLiveHeadRotation(poseStack, attachFace, blockEntity);
 
-        renderBakedModel(
-                headModel,
-                poseStack,
-                bufferSource,
-                packedLight,
-                packedOverlay,
-                state,
-                blockEntity.getBlockPos().asLong() + 1L
-        );
+            renderBakedModel(
+                    headModel,
+                    poseStack,
+                    bufferSource,
+                    packedLight,
+                    packedOverlay,
+                    state,
+                    blockEntity.getBlockPos().asLong() + 1L
+            );
 
-        poseStack.popPose();
+            poseStack.popPose();
+        }
     }
 
     private static boolean hasVisibleExtension(ActionCameraBlockEntity blockEntity) {
