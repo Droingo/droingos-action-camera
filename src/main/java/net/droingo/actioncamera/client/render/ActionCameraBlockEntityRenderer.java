@@ -39,6 +39,14 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
      * Player must actually move the camera head by a visible amount.
      */
     private static final double MIN_VISIBLE_EXTENSION_DISTANCE = 0.03D;
+    /*
+     * When viewing/editing through an extension camera, the camera head is hidden.
+     * The real head would normally cover the end cap of the pole.
+     *
+     * So for the ACTIVE camera only, render the pole slightly past the hidden head
+     * so the visible end/cap is pushed out of the player's view.
+     */
+
 
     public ActionCameraBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
     }
@@ -243,6 +251,19 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         }
 
         Vec3 normalizedDirection = direction.normalize();
+
+        /*
+         * Active-camera-only visual cheat:
+         *
+         * Outside the camera, the pole should end exactly at the camera head hinge.
+         * But while looking through this camera, the head is hidden. Without the head
+         * model there, the pole cap becomes visible.
+         *
+         * So only for the active camera, extend the rendered pole slightly past the
+         * hidden head. This does not change the saved extension offset or the camera
+         * position. It is purely visual.
+         */
+
 
         Quaternionf rotation = new Quaternionf().rotationTo(
                 0.0F,

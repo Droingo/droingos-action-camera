@@ -10,18 +10,30 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 public final class ActionCameraPoseResolver {
+    private static final double BLOCK_CENTER = 0.5D;
+
     /*
-     * How far forward from the camera base point the actual view sits.
-     *
-     * Tune only this value if the view feels too far inside/outside the camera:
-     * - smaller = closer to camera body
-     * - larger = further out in front of lens
+     * These should match the renderer's pole/head anchor point.
+     * This is the physical point the extension pole uses.
      */
-    private static final double CAMERA_VIEW_FORWARD_OFFSET = 4.0D / 16.0D;
+    private static final double FLOOR_HEAD_HINGE_X = 8.0D / 16.0D;
+    private static final double FLOOR_HEAD_HINGE_Y = 2.0D / 16.0D;
+    private static final double FLOOR_HEAD_HINGE_Z = 7.0D / 16.0D;
+
+    private static final double WALL_HEAD_HINGE_X = 8.0D / 16.0D;
+    private static final double WALL_HEAD_HINGE_Y = 7.25D / 16.0D;
+    private static final double WALL_HEAD_HINGE_Z = 14.6D / 16.0D;
+
+    /*
+     * Important:
+     * This is a fixed positional nudge, not a rotated forward/lens offset.
+     *
+     * The previous forward-based offset caused the camera to orbit when aiming.
+     * This keeps the camera position stable while yaw/pitch only changes view direction.
+     */
+    private static final double CAMERA_FIXED_Y_PUSH = 2.0D / 16.0D;
 
     private ActionCameraPoseResolver() {
     }
@@ -53,34 +65,25 @@ public final class ActionCameraPoseResolver {
         float finalRoll = camera.getRollOffset();
 
         /*
-         * Use cameraPoseOffset, not worldAssemblyOffset.
+         * Fixed camera position.
          *
-         * worldAssemblyOffset = rendered model position.
-         * cameraPoseOffset = real viewpoint/hitbox position.
+         * This uses the same pole/head anchor point as the renderer, adds the
+         * extension offset, then adds only a small static Y lift.
          *
-         * On walls, this pushes the actual camera view closer to the visible
-         * wall-mounted camera head.
+         * There is intentionally NO forward vector offset here.
+         * Rotation must not move the camera origin.
          */
-        Vec3 slotOffset = ActionCameraMountSlot.cameraPoseOffset(attachFace, facing, mountSlot);
-        Vec3 extensionOffset = camera.getExtensionOffset();
-
-        Quaternionf cameraRotation = new Quaternionf().rotationYXZ(
-                (float) Math.toRadians(-finalYaw),
-                (float) Math.toRadians(finalPitch),
-                (float) Math.toRadians(finalRoll)
+        Vec3 anchorLocal = getPoleCameraAnchorBlockLocal(
+                camera,
+                attachFace,
+                facing,
+                mountSlot
         );
 
-        Vector3f forwardViewOffset = new Vector3f(
-                0.0F,
-                0.0F,
-                (float) CAMERA_VIEW_FORWARD_OFFSET
-        ).rotate(cameraRotation);
-
-        Vec3 worldPosition = Vec3.atCenterOf(pos).add(
-                slotOffset.x + camera.getOffsetX() + extensionOffset.x + forwardViewOffset.x(),
-                slotOffset.y + camera.getOffsetY() + extensionOffset.y + forwardViewOffset.y(),
-                slotOffset.z + camera.getOffsetZ() + extensionOffset.z + forwardViewOffset.z()
-        );
+        Vec3 worldPosition = Vec3.atLowerCornerOf(pos)
+                .add(anchorLocal)
+                .add(camera.getExtensionOffset())
+                .add(0.0D, CAMERA_FIXED_Y_PUSH, 0.0D);
 
         ActionCameraPose basePose = new ActionCameraPose(
                 worldPosition,
@@ -99,6 +102,101 @@ public final class ActionCameraPoseResolver {
         );
     }
 
+    private static Vec3 getPoleCameraAnchorBlockLocal(
+            ActionCameraBlockEntity blockEntity,
+            AttachFace attachFace,
+            Direction facing,
+            int mountSlot
+    ) {
+        /*
+         * This matches the renderer's pole positioning path.
+         * Use worldAssemblyOffset because that is where the visible model/pole is.
+         */
+        Vec3 slotOffset = ActionCameraMountSlot.worldAssemblyOffset(attachFace, facing, mountSlot);
+
+        Vec3 hingeBeforeMountRotation = new Vec3(
+                hingeXForAttachFace(attachFace),
+                hingeYForAttachFace(attachFace),
+                hingeZForAttachFace(attachFace)
+        );
+
+        Vec3 hingeAfterMountRotation = rotatePointAroundBlockCenter(
+                hingeBeforeMountRotation,
+                attachFace,
+                facing
+        );
+
+        return new Vec3(
+                slotOffset.x + blockEntity.getOffsetX() + hingeAfterMountRotation.x,
+                slotOffset.y + blockEntity.getOffsetY() + hingeAfterMountRotation.y,
+                slotOffset.z + blockEntity.getOffsetZ() + hingeAfterMountRotation.z
+        );
+    }
+
+    private static Vec3 rotatePointAroundBlockCenter(
+            Vec3 point,
+            AttachFace attachFace,
+            Direction facing
+    ) {
+        Vec3 shifted = point.subtract(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
+
+        Vec3 rotated = switch (attachFace) {
+            case FLOOR -> rotateY(shifted, yRotationForFacing(facing));
+
+            case WALL -> rotateY(shifted, wallYRotationForFacing(facing));
+
+            case CEILING -> {
+                Vec3 yRotated = rotateY(shifted, yRotationForFacing(facing));
+                yield rotateX(yRotated, 180.0F);
+            }
+        };
+
+        return rotated.add(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
+    }
+
+    private static Vec3 rotateY(Vec3 vec, float degrees) {
+        double radians = Math.toRadians(degrees);
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+
+        double x = vec.x * cos + vec.z * sin;
+        double z = -vec.x * sin + vec.z * cos;
+
+        return new Vec3(x, vec.y, z);
+    }
+
+    private static Vec3 rotateX(Vec3 vec, float degrees) {
+        double radians = Math.toRadians(degrees);
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+
+        double y = vec.y * cos - vec.z * sin;
+        double z = vec.y * sin + vec.z * cos;
+
+        return new Vec3(vec.x, y, z);
+    }
+
+    private static double hingeXForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_X;
+            case WALL -> WALL_HEAD_HINGE_X;
+        };
+    }
+
+    private static double hingeYForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_Y;
+            case WALL -> WALL_HEAD_HINGE_Y;
+        };
+    }
+
+    private static double hingeZForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_Z;
+            case WALL -> WALL_HEAD_HINGE_Z;
+        };
+    }
+
     public static float yawForFacing(Direction facing) {
         return switch (facing) {
             case SOUTH -> 0.0F;
@@ -106,6 +204,26 @@ public final class ActionCameraPoseResolver {
             case NORTH -> 180.0F;
             case EAST -> -90.0F;
             default -> 180.0F;
+        };
+    }
+
+    private static float yRotationForFacing(Direction facing) {
+        return switch (facing) {
+            case NORTH -> 0.0F;
+            case EAST -> 90.0F;
+            case SOUTH -> 180.0F;
+            case WEST -> 270.0F;
+            default -> 0.0F;
+        };
+    }
+
+    private static float wallYRotationForFacing(Direction facing) {
+        return switch (facing) {
+            case NORTH -> 0.0F;
+            case SOUTH -> 180.0F;
+            case EAST -> 270.0F;
+            case WEST -> 90.0F;
+            default -> 0.0F;
         };
     }
 }
