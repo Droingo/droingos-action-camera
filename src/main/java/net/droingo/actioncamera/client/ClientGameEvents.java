@@ -27,6 +27,7 @@ import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import org.lwjgl.glfw.GLFW;
+import net.droingo.actioncamera.client.gui.ActionCameraEditControlsScreen;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -50,6 +51,7 @@ public final class ClientGameEvents {
         handleExtensionPoleKeybind();
         handleRenameCameraKeybind();
         handleEditOverlayModeKeybind();
+        handleEditControlsGui();
         ActionCameraClientState.clientTick();
     }
 
@@ -89,6 +91,32 @@ public final class ClientGameEvents {
                     true
             );
         }
+    }
+    private static void handleEditControlsGui() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.player == null || minecraft.level == null) {
+            return;
+        }
+
+        if (!ActionCameraClientState.isEditingCamera()) {
+            return;
+        }
+
+        if (minecraft.screen != null) {
+            return;
+        }
+
+        if (isControlDown(minecraft)) {
+            ActionCameraEditControlsScreen.open();
+        }
+    }
+
+    private static boolean isControlDown(Minecraft minecraft) {
+        long window = minecraft.getWindow().getWindow();
+
+        return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
     }
 
     private static String overlayModeLabel(ActionCameraClientPreferences.EditOverlayMode mode) {
@@ -377,24 +405,22 @@ public final class ClientGameEvents {
         int width = minecraft.getWindow().getGuiScaledWidth();
         int height = minecraft.getWindow().getGuiScaledHeight();
 
+        if (ActionCameraClientPreferences.isRuleOfThirdsEnabled()) {
+            renderRuleOfThirds(guiGraphics, width, height);
+        }
+
         ActionCameraClientPreferences.EditOverlayMode mode =
                 ActionCameraClientPreferences.getEditOverlayMode();
 
         switch (mode) {
-            case FULL -> {
-                renderRuleOfThirds(guiGraphics, width, height);
-                renderEditHud(guiGraphics, minecraft, width, height);
-            }
+            case FULL -> renderEditHud(guiGraphics, minecraft, width, height);
 
-            case SIMPLE -> {
-                renderRuleOfThirds(guiGraphics, width, height);
-                renderSimpleEditHud(guiGraphics, minecraft, width, height);
-            }
+            case SIMPLE -> renderSimpleEditHud(guiGraphics, minecraft, width, height);
 
             case OFF -> {
                 /*
-                 * Fully hidden edit overlay.
-                 * Camera controls still work.
+                 * HUD hidden.
+                 * Rule of thirds is controlled separately above.
                  */
             }
         }
@@ -446,15 +472,17 @@ public final class ClientGameEvents {
                 poleStatus,
                 polePlacementStatus,
                 distanceText,
+                "Rule of Thirds: " + (ActionCameraClientPreferences.isRuleOfThirdsEnabled() ? "On" : "Off"),
                 "",
                 "Mouse: Aim camera",
+                "Hold Ctrl: Edit controls",
                 "R: Rename camera",
                 "V: Enter/exit pole placement",
                 "Alt + V: Attach/detach pole",
                 "WASD: Move camera head",
-                "Space / Ctrl: Up / Down",
-                "H: Overlay Full/Simple/Off",
-                polePlacement ? "Shift: Disabled while placing pole" : "Shift: Save and exit"
+                "Space / Shift: Up / Down",
+                "H: HUD Full/Simple/Off",
+                polePlacement ? "Shift: Move pole down" : "Shift: Save and exit"
         };
 
         int maxWidth = 0;
@@ -535,16 +563,19 @@ public final class ClientGameEvents {
 
         String poleStatus = poleAttached ? "Pole Attached" : "Pole Detached";
         String placementStatus = polePlacement ? "Placing Pole" : "Aiming Camera";
+        String thirdsStatus = ActionCameraClientPreferences.isRuleOfThirdsEnabled() ? "Thirds On" : "Thirds Off";
 
         String text = placementStatus
                 + "  |  "
                 + poleStatus
-                + "  |  H Overlay";
+                + "  |  "
+                + thirdsStatus
+                + "  |  Hold Ctrl Controls";
 
         int textWidth = minecraft.font.width(text);
 
         int x = (width - textWidth) / 2;
-        int y = height - 22;
+        int y = height - 64;
 
         guiGraphics.fill(
                 x - 6,

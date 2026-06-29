@@ -53,6 +53,8 @@ public final class ActionCameraClientState {
 
     private static boolean extensionEditMode;
 
+    private static boolean editControlsOpen;
+
     private static boolean dirty;
     private static int saveCooldownTicks;
 
@@ -173,6 +175,7 @@ public final class ActionCameraClientState {
 
         mode = Mode.VIEW;
         extensionEditMode = false;
+        editControlsOpen = false;
 
         forceVanillaSoundCameraTicks = 0;
         dirty = false;
@@ -222,6 +225,7 @@ public final class ActionCameraClientState {
         editExtensionZ = camera.getExtensionZ();
 
         extensionEditMode = false;
+        editControlsOpen = false;
 
         forceVanillaSoundCameraTicks = 0;
         dirty = false;
@@ -244,6 +248,7 @@ public final class ActionCameraClientState {
         activeCameraPos = null;
         activeCameraLabel = "Action Camera";
         extensionEditMode = false;
+        editControlsOpen = false;
 
         smoothedPose = null;
         lastAppliedPose = null;
@@ -263,6 +268,7 @@ public final class ActionCameraClientState {
             mode = Mode.NONE;
             activeCameraLabel = "Action Camera";
             extensionEditMode = false;
+            editControlsOpen = false;
             return;
         }
 
@@ -293,6 +299,14 @@ public final class ActionCameraClientState {
         } else if (isViewingCamera()) {
             stopViewing();
         }
+    }
+
+    public static boolean isEditControlsOpen() {
+        return isEditingCamera() && editControlsOpen;
+    }
+
+    public static void setEditControlsOpen(boolean value) {
+        editControlsOpen = value;
     }
 
     public static void toggleExtensionEditMode() {
@@ -408,7 +422,7 @@ public final class ActionCameraClientState {
          * While extension-pole editing is active, Shift is ignored so players do
          * not accidentally save/exit while positioning the camera head.
          */
-        if (shiftDown && !wasShiftDown && !extensionEditMode) {
+        if (shiftDown && !wasShiftDown && !extensionEditMode && !isEditControlsOpen()) {
             stopActiveCamera();
             wasShiftDown = true;
             return;
@@ -416,7 +430,7 @@ public final class ActionCameraClientState {
 
         wasShiftDown = shiftDown;
 
-        if (isExtensionEditMode()) {
+        if (isExtensionEditMode() && !isEditControlsOpen()) {
             tickExtensionMovement(minecraft);
         }
 
@@ -431,7 +445,7 @@ public final class ActionCameraClientState {
     }
 
     public static boolean handleMouseTurn(double vanillaYawDelta, double vanillaPitchDelta) {
-        if (!isEditingCamera()) {
+        if (!isEditingCamera() || isEditControlsOpen()) {
             return false;
         }
 
@@ -498,7 +512,12 @@ public final class ActionCameraClientState {
             delta = delta.add(0.0D, EXTENSION_MOVE_SPEED, 0.0D);
         }
 
-        if (isControlDown(minecraft)) {
+        /*
+         * Ctrl now opens the edit controls GUI.
+         * While pole placement is active, Shift is safe to use as "move down"
+         * because Shift save/exit is disabled during pole placement.
+         */
+        if (minecraft.options.keyShift.isDown()) {
             delta = delta.add(0.0D, -EXTENSION_MOVE_SPEED, 0.0D);
         }
 

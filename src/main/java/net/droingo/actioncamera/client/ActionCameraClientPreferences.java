@@ -12,10 +12,22 @@ import java.util.Properties;
 
 public final class ActionCameraClientPreferences {
     private static final String FILE_NAME = "droingo_action_camera_client.properties";
+
     private static final String KEY_EDIT_OVERLAY_MODE = "editOverlayMode";
+    private static final String KEY_RULE_OF_THIRDS_ENABLED = "ruleOfThirdsEnabled";
 
     private static boolean loaded = false;
+
+    /*
+     * This now controls the HUD panel only:
+     * FULL   = full text panel
+     * SIMPLE = small bottom strip
+     * OFF    = no HUD text
+     *
+     * Rule of thirds is controlled separately.
+     */
     private static EditOverlayMode editOverlayMode = EditOverlayMode.FULL;
+    private static boolean ruleOfThirdsEnabled = true;
 
     private ActionCameraClientPreferences() {
     }
@@ -32,6 +44,20 @@ public final class ActionCameraClientPreferences {
         save();
 
         return editOverlayMode;
+    }
+
+    public static boolean isRuleOfThirdsEnabled() {
+        ensureLoaded();
+        return ruleOfThirdsEnabled;
+    }
+
+    public static boolean toggleRuleOfThirdsEnabled() {
+        ensureLoaded();
+
+        ruleOfThirdsEnabled = !ruleOfThirdsEnabled;
+        save();
+
+        return ruleOfThirdsEnabled;
     }
 
     private static void ensureLoaded() {
@@ -54,10 +80,13 @@ public final class ActionCameraClientPreferences {
             properties.load(inputStream);
 
             String rawMode = properties.getProperty(KEY_EDIT_OVERLAY_MODE, EditOverlayMode.FULL.name());
-
             editOverlayMode = EditOverlayMode.fromString(rawMode);
+
+            String rawRuleOfThirds = properties.getProperty(KEY_RULE_OF_THIRDS_ENABLED, "true");
+            ruleOfThirdsEnabled = Boolean.parseBoolean(rawRuleOfThirds);
         } catch (IOException ignored) {
             editOverlayMode = EditOverlayMode.FULL;
+            ruleOfThirdsEnabled = true;
         }
     }
 
@@ -69,6 +98,7 @@ public final class ActionCameraClientPreferences {
 
             Properties properties = new Properties();
             properties.setProperty(KEY_EDIT_OVERLAY_MODE, editOverlayMode.name());
+            properties.setProperty(KEY_RULE_OF_THIRDS_ENABLED, Boolean.toString(ruleOfThirdsEnabled));
 
             try (OutputStream outputStream = Files.newOutputStream(path)) {
                 properties.store(outputStream, "Droingo's Action Camera client preferences");
