@@ -1,5 +1,6 @@
 package net.droingo.actioncamera.world.blockentity;
 
+import net.droingo.actioncamera.network.ModNetworking;
 import net.droingo.actioncamera.registry.ModBlockEntities;
 import net.droingo.actioncamera.world.ActionCameraKnownCameras;
 import net.minecraft.core.BlockPos;
@@ -48,10 +49,18 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         /*
          * Auto-discovery for C cycling.
          *
-         * This is important for servers, ReplayMod, and Sable sublevels. The player
-         * should not have to right-click a camera before it becomes cycleable.
+         * Client side:
+         * Keeps normal loaded-camera discovery working.
+         *
+         * Server side:
+         * Sends a passive clientbound packet that ReplayMod can record.
+         * This packet does not force the player into the camera.
          */
         ActionCameraKnownCameras.register(worldPosition);
+
+        if (level != null && !level.isClientSide()) {
+            ModNetworking.sendCameraAvailable(this);
+        }
     }
 
     @Override
@@ -173,6 +182,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         this.cameraName = sanitizeCameraName(cameraName);
 
         this.extensionEnabled = extensionEnabled;
+
         Vec3 clampedExtension = clampExtensionOffset(new Vec3(extensionX, extensionY, extensionZ));
         this.extensionX = clampedExtension.x;
         this.extensionY = clampedExtension.y;
@@ -182,6 +192,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         if (level != null && !level.isClientSide()) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            ModNetworking.sendCameraAvailable(this);
         }
     }
 
@@ -197,6 +208,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         if (level != null && !level.isClientSide()) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            ModNetworking.sendCameraAvailable(this);
         }
     }
 

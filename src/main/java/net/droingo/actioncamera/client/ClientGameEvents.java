@@ -2,6 +2,8 @@ package net.droingo.actioncamera.client;
 
 import dev.ryanhcode.sable.companion.SableCompanion;
 import net.droingo.actioncamera.DroingoActionCamera;
+import net.droingo.actioncamera.client.gui.ActionCameraEditControlsScreen;
+import net.droingo.actioncamera.client.gui.ActionCameraRenameScreen;
 import net.droingo.actioncamera.world.ActionCameraKnownCameras;
 import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.client.Minecraft;
@@ -17,7 +19,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
-import net.droingo.actioncamera.client.gui.ActionCameraRenameScreen;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -27,7 +28,6 @@ import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import org.lwjgl.glfw.GLFW;
-import net.droingo.actioncamera.client.gui.ActionCameraEditControlsScreen;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -92,6 +92,7 @@ public final class ClientGameEvents {
             );
         }
     }
+
     private static void handleEditControlsGui() {
         Minecraft minecraft = Minecraft.getInstance();
 
@@ -127,11 +128,6 @@ public final class ClientGameEvents {
         };
     }
 
-    /*
-     * FIX:
-     * When extension pole edit mode is active, WASD/Space/Ctrl are camera-head
-     * controls, not player controls.
-     */
     @SubscribeEvent
     public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
         if (!ActionCameraClientState.isExtensionEditMode()) {
@@ -255,10 +251,6 @@ public final class ClientGameEvents {
                 && minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity camera) {
             String customName = camera.getCameraName();
 
-            /*
-             * "Action Camera" is the internal/default saved name.
-             * For unrenamed cameras, keep showing generated Cam 1 / Cam 2 / Cam 3.
-             */
             if (customName != null
                     && !customName.isBlank()
                     && !"Action Camera".equals(customName)) {
@@ -302,6 +294,15 @@ public final class ClientGameEvents {
             return new ArrayList<>();
         }
 
+        /*
+         * Includes cameras discovered from:
+         * - live client block entities
+         * - right-clicking
+         * - block entity NBT load
+         * - passive CameraAvailablePayload packets
+         *
+         * The passive packet path is the important ReplayMod fix.
+         */
         cameraSet.addAll(ActionCameraKnownCameras.snapshot());
 
         ChunkPos playerChunk = new ChunkPos(minecraft.player.blockPosition());
@@ -329,9 +330,19 @@ public final class ClientGameEvents {
         for (BlockPos pos : cameraSet) {
             if (minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity) {
                 cameras.add(pos.immutable());
-            } else {
-                ActionCameraKnownCameras.unregister(pos);
             }
+
+            /*
+             * Important ReplayMod change:
+             *
+             * Do NOT unregister missing block entities here.
+             *
+             * ReplayMod can replay our passive CameraAvailablePayload before the
+             * camera block entity is fully queryable by normal client code. If we
+             * unregister it immediately, the packet becomes useless.
+             *
+             * Real removals are still handled by ActionCameraBlockEntity#setRemoved.
+             */
         }
 
         Vec3 playerPos = minecraft.player.position();
@@ -418,10 +429,6 @@ public final class ClientGameEvents {
             case SIMPLE -> renderSimpleEditHud(guiGraphics, minecraft, width, height);
 
             case OFF -> {
-                /*
-                 * HUD hidden.
-                 * Rule of thirds is controlled separately above.
-                 */
             }
         }
     }
@@ -441,7 +448,6 @@ public final class ClientGameEvents {
         guiGraphics.fill(0, horizontalOne, width, horizontalOne + 1, lineColor);
         guiGraphics.fill(0, horizontalTwo, width, horizontalTwo + 1, lineColor);
     }
-
 
     private static void renderEditHud(
             GuiGraphics guiGraphics,
@@ -467,7 +473,7 @@ public final class ClientGameEvents {
 
         String distanceText = String.format(java.util.Locale.ROOT, "Pole Distance: %.2f blocks", distance);
 
-        String[] lines = new String[] {
+        String[] lines = new String[]{
                 title,
                 poleStatus,
                 polePlacementStatus,
@@ -505,11 +511,6 @@ public final class ClientGameEvents {
                 0xB0000000
         );
 
-        /*
-         * Small left accent strip:
-         * green = pole attached
-         * grey = pole detached
-         */
         guiGraphics.fill(
                 x - padding,
                 y - padding,
