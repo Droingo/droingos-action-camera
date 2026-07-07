@@ -6,6 +6,7 @@ import net.droingo.actioncamera.world.block.ActionCameraBlock;
 import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -29,7 +30,6 @@ public final class ActionCameraClientState {
     private static final double EXTENSION_MOVE_SPEED = 0.035D;
 
     private static Mode mode = Mode.NONE;
-
     private static BlockPos activeCameraPos;
     private static String activeCameraLabel = "Action Camera";
 
@@ -51,13 +51,14 @@ public final class ActionCameraClientState {
     private static double editExtensionY;
     private static double editExtensionZ;
 
+    private static boolean editExternalRigVisible = true;
+    private static double editMaxExtensionDistance = ActionCameraBlockEntity.DEFAULT_MAX_EXTENSION_DISTANCE;
+    private static boolean editCameraNameAlwaysVisible;
+
     private static boolean extensionEditMode;
-
     private static boolean editControlsOpen;
-
     private static boolean dirty;
     private static int saveCooldownTicks;
-
     private static boolean wasShiftDown;
 
     private static ActionCameraPose smoothedPose;
@@ -93,12 +94,30 @@ public final class ActionCameraClientState {
         return mode == Mode.VIEW && activeCameraPos != null;
     }
 
+    public static boolean isEditingCamera() {
+        return mode == Mode.EDIT && activeCameraPos != null;
+    }
+
     public static boolean isExtensionArmEnabledForHud() {
         return isEditingCamera() && editExtensionEnabled;
     }
 
     public static boolean isExtensionPlacementModeForHud() {
         return isEditingCamera() && extensionEditMode;
+    }
+
+    public static boolean isExternalRigVisibleForHud() {
+        return !isEditingCamera() || editExternalRigVisible;
+    }
+
+    public static boolean isCameraNameAlwaysVisibleForHud() {
+        return isEditingCamera() && editCameraNameAlwaysVisible;
+    }
+
+    public static double getMaxExtensionDistanceForHud() {
+        return isEditingCamera()
+                ? editMaxExtensionDistance
+                : ActionCameraBlockEntity.DEFAULT_MAX_EXTENSION_DISTANCE;
     }
 
     public static double getExtensionDistanceForHud() {
@@ -111,10 +130,6 @@ public final class ActionCameraClientState {
                         + editExtensionY * editExtensionY
                         + editExtensionZ * editExtensionZ
         );
-    }
-
-    public static boolean isEditingCamera() {
-        return mode == Mode.EDIT && activeCameraPos != null;
     }
 
     public static boolean isExtensionEditMode() {
@@ -169,19 +184,14 @@ public final class ActionCameraClientState {
         }
 
         activeCameraPos = pos.immutable();
-        activeCameraLabel = label == null || label.isBlank()
-                ? camera.getCameraName()
-                : label;
-
+        activeCameraLabel = label == null || label.isBlank() ? camera.getCameraName() : label;
         mode = Mode.VIEW;
         extensionEditMode = false;
         editControlsOpen = false;
-
         forceVanillaSoundCameraTicks = 0;
         dirty = false;
         saveCooldownTicks = 0;
         wasShiftDown = minecraft.options.keyShift.isDown();
-
         smoothedPose = null;
         lastAppliedPose = null;
 
@@ -203,7 +213,6 @@ public final class ActionCameraClientState {
 
         activeCameraPos = pos.immutable();
         activeCameraLabel = camera.getCameraName();
-
         mode = Mode.EDIT;
 
         editOffsetX = camera.getOffsetX();
@@ -224,19 +233,18 @@ public final class ActionCameraClientState {
         editExtensionY = camera.getExtensionY();
         editExtensionZ = camera.getExtensionZ();
 
+        editExternalRigVisible = camera.isExternalRigVisible();
+        editMaxExtensionDistance = camera.getMaxExtensionDistance();
+        editCameraNameAlwaysVisible = camera.isCameraNameAlwaysVisible();
+
         extensionEditMode = false;
         editControlsOpen = false;
-
         forceVanillaSoundCameraTicks = 0;
         dirty = false;
         saveCooldownTicks = 0;
-
         wasShiftDown = true;
-
         smoothedPose = null;
         lastAppliedPose = null;
-
-
     }
 
     public static void stopViewing() {
@@ -249,10 +257,8 @@ public final class ActionCameraClientState {
         activeCameraLabel = "Action Camera";
         extensionEditMode = false;
         editControlsOpen = false;
-
         smoothedPose = null;
         lastAppliedPose = null;
-
         dirty = false;
 
         if (minecraft.player != null) {
@@ -282,10 +288,8 @@ public final class ActionCameraClientState {
         activeCameraPos = null;
         activeCameraLabel = "Action Camera";
         extensionEditMode = false;
-
         smoothedPose = null;
         lastAppliedPose = null;
-
         dirty = false;
 
         if (minecraft.player != null) {
@@ -307,6 +311,49 @@ public final class ActionCameraClientState {
 
     public static void setEditControlsOpen(boolean value) {
         editControlsOpen = value;
+    }
+
+    public static void toggleExternalRigVisible() {
+        if (!isEditingCamera()) {
+            return;
+        }
+
+        editExternalRigVisible = !editExternalRigVisible;
+        applyLiveEditToClientBlockEntity();
+        dirty = true;
+        saveCooldownTicks = 0;
+    }
+
+    public static void toggleCameraNameAlwaysVisible() {
+        if (!isEditingCamera()) {
+            return;
+        }
+
+        editCameraNameAlwaysVisible = !editCameraNameAlwaysVisible;
+        applyLiveEditToClientBlockEntity();
+        dirty = true;
+        saveCooldownTicks = 0;
+    }
+
+    public static void setMaxExtensionDistanceFromGui(double distance) {
+        if (!isEditingCamera()) {
+            return;
+        }
+
+        editMaxExtensionDistance = ActionCameraBlockEntity.clampMaxExtensionDistance(distance);
+
+        Vec3 clamped = ActionCameraBlockEntity.clampExtensionOffset(
+                new Vec3(editExtensionX, editExtensionY, editExtensionZ),
+                editMaxExtensionDistance
+        );
+
+        editExtensionX = clamped.x;
+        editExtensionY = clamped.y;
+        editExtensionZ = clamped.z;
+
+        applyLiveEditToClientBlockEntity();
+        dirty = true;
+        saveCooldownTicks = 0;
     }
 
     public static void toggleExtensionEditMode() {
@@ -333,8 +380,6 @@ public final class ActionCameraClientState {
     }
 
     public static void toggleExtensionArm() {
-        Minecraft minecraft = Minecraft.getInstance();
-
         if (!isEditingCamera()) {
             return;
         }
@@ -355,14 +400,9 @@ public final class ActionCameraClientState {
             editExtensionY = 0.0D;
             editExtensionZ = 0.0D;
             extensionEditMode = false;
-
             applyLiveEditToClientBlockEntity();
-
             dirty = true;
             saveCooldownTicks = 0;
-
-
-
             return;
         }
 
@@ -376,13 +416,9 @@ public final class ActionCameraClientState {
         editExtensionY = 0.0D;
         editExtensionZ = 0.0D;
         extensionEditMode = true;
-
         applyLiveEditToClientBlockEntity();
-
         dirty = true;
         saveCooldownTicks = 0;
-
-
     }
 
     public static void clientTick() {
@@ -453,7 +489,6 @@ public final class ActionCameraClientState {
         editPitchOffset = Mth.clamp(editPitchOffset - (float) vanillaPitchDelta * 0.15F, -89.0F, 89.0F);
 
         applyLiveEditToClientBlockEntity();
-
         dirty = true;
         return true;
     }
@@ -464,7 +499,6 @@ public final class ActionCameraClientState {
         }
 
         BlockState state = minecraft.level.getBlockState(activeCameraPos);
-
         Direction facing = state.hasProperty(ActionCameraBlock.HORIZONTAL_FACING)
                 ? state.getValue(ActionCameraBlock.HORIZONTAL_FACING)
                 : Direction.NORTH;
@@ -513,7 +547,7 @@ public final class ActionCameraClientState {
         }
 
         /*
-         * Ctrl now opens the edit controls GUI.
+         * Ctrl opens the edit controls GUI.
          * While pole placement is active, Shift is safe to use as "move down"
          * because Shift save/exit is disabled during pole placement.
          */
@@ -525,11 +559,14 @@ public final class ActionCameraClientState {
             return;
         }
 
-        Vec3 clamped = ActionCameraBlockEntity.clampExtensionOffset(new Vec3(
-                editExtensionX + delta.x,
-                editExtensionY + delta.y,
-                editExtensionZ + delta.z
-        ));
+        Vec3 clamped = ActionCameraBlockEntity.clampExtensionOffset(
+                new Vec3(
+                        editExtensionX + delta.x,
+                        editExtensionY + delta.y,
+                        editExtensionZ + delta.z
+                ),
+                editMaxExtensionDistance
+        );
 
         editExtensionEnabled = true;
         editExtensionX = clamped.x;
@@ -537,15 +574,7 @@ public final class ActionCameraClientState {
         editExtensionZ = clamped.z;
 
         applyLiveEditToClientBlockEntity();
-
         dirty = true;
-    }
-
-    private static boolean isControlDown(Minecraft minecraft) {
-        long window = minecraft.getWindow().getWindow();
-
-        return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
     }
 
     private static void applyLiveEditToClientBlockEntity() {
@@ -571,7 +600,10 @@ public final class ActionCameraClientState {
                     editExtensionEnabled,
                     editExtensionX,
                     editExtensionY,
-                    editExtensionZ
+                    editExtensionZ,
+                    editExternalRigVisible,
+                    editMaxExtensionDistance,
+                    editCameraNameAlwaysVisible
             );
         }
     }
@@ -595,7 +627,10 @@ public final class ActionCameraClientState {
                 editExtensionEnabled,
                 editExtensionX,
                 editExtensionY,
-                editExtensionZ
+                editExtensionZ,
+                editExternalRigVisible,
+                editMaxExtensionDistance,
+                editCameraNameAlwaysVisible
         ));
 
         dirty = false;
@@ -624,9 +659,7 @@ public final class ActionCameraClientState {
             return "Action Camera";
         }
 
-        return editCameraName == null || editCameraName.isBlank()
-                ? "Action Camera"
-                : editCameraName;
+        return editCameraName == null || editCameraName.isBlank() ? "Action Camera" : editCameraName;
     }
 
     public static void renameEditingCamera(String newName) {
@@ -638,7 +671,6 @@ public final class ActionCameraClientState {
         activeCameraLabel = editCameraName;
 
         applyLiveEditToClientBlockEntity();
-
         dirty = true;
         saveCooldownTicks = 0;
 
@@ -661,6 +693,50 @@ public final class ActionCameraClientState {
         }
 
         return trimmed;
+    }
+
+    public static boolean shouldRenderHardCameraNameOverlay() {
+        if (!isViewingCamera() || activeCameraPos == null) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.level == null) {
+            return false;
+        }
+
+        if (minecraft.level.getBlockEntity(activeCameraPos) instanceof ActionCameraBlockEntity camera) {
+            return camera.isCameraNameAlwaysVisible();
+        }
+
+        return false;
+    }
+
+    public static void renderCameraNameOverlay(GuiGraphics guiGraphics) {
+        Minecraft minecraft = Minecraft.getInstance();
+        String label = getActiveCameraLabel();
+
+        int x = 8;
+        int y = 8;
+        int textWidth = minecraft.font.width(label);
+
+        guiGraphics.fill(
+                x - 4,
+                y - 3,
+                x + textWidth + 5,
+                y + 11,
+                0x90000000
+        );
+
+        guiGraphics.drawString(
+                minecraft.font,
+                label,
+                x,
+                y,
+                0xFFFFFF,
+                false
+        );
     }
 
     public static void applyToCamera(Camera camera, float partialTick) {
@@ -693,7 +769,6 @@ public final class ActionCameraClientState {
         captureVanillaCameraSnapshot(camera);
 
         BlockState state = minecraft.level.getBlockState(activeCameraPos);
-
         ActionCameraPose rawPose = ActionCameraPoseResolver.resolve(
                 minecraft.level,
                 activeCameraPos,
@@ -703,9 +778,7 @@ public final class ActionCameraClientState {
         );
 
         ActionCameraPose finalPose = smooth(rawPose, actionCamera.getSmoothing());
-
         applyCameraFields(camera, finalPose);
-
         lastAppliedPose = finalPose;
     }
 
@@ -720,7 +793,6 @@ public final class ActionCameraClientState {
         float alpha = 1.0F - clampedSmoothing;
 
         Vec3 position = smoothedPose.position().lerp(rawPose.position(), alpha);
-
         float yaw = lerpDegrees(alpha, smoothedPose.yaw(), rawPose.yaw());
         float pitch = Mth.lerp(alpha, smoothedPose.pitch(), rawPose.pitch());
         float roll = lerpDegrees(alpha, smoothedPose.roll(), rawPose.roll());
@@ -749,7 +821,6 @@ public final class ActionCameraClientState {
         Vec3 position = pose.position();
 
         accessor.droingoActionCamera$setPosition(position);
-
         accessor.droingoActionCamera$getBlockPosition().set(
                 Mth.floor(position.x),
                 Mth.floor(position.y),
@@ -760,7 +831,6 @@ public final class ActionCameraClientState {
         accessor.droingoActionCamera$setXRot(pose.pitch());
 
         Quaternionf rotation = accessor.droingoActionCamera$getRotation();
-
         rotation.rotationYXZ(
                 (float) Math.toRadians(-pose.yaw()),
                 (float) Math.toRadians(pose.pitch()),
@@ -817,15 +887,12 @@ public final class ActionCameraClientState {
 
             accessor.droingoActionCamera$setPosition(position);
             accessor.droingoActionCamera$getBlockPosition().set(blockX, blockY, blockZ);
-
             accessor.droingoActionCamera$setXRot(xRot);
             accessor.droingoActionCamera$setYRot(yRot);
-
             accessor.droingoActionCamera$getRotation().set(rotation);
             accessor.droingoActionCamera$getForwards().set(forwards);
             accessor.droingoActionCamera$getUp().set(up);
             accessor.droingoActionCamera$getLeft().set(left);
-
             accessor.droingoActionCamera$setDetached(detached);
         }
     }

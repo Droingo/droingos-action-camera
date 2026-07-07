@@ -83,7 +83,7 @@ public final class ActionCameraPoseResolver {
         Vec3 worldPosition = Vec3.atLowerCornerOf(pos)
                 .add(anchorLocal)
                 .add(camera.getExtensionOffset())
-                .add(0.0D, CAMERA_FIXED_Y_PUSH, 0.0D);
+                .add(cameraFixedOffsetBlockLocal(attachFace, facing));
 
         ActionCameraPose basePose = new ActionCameraPose(
                 worldPosition,
@@ -142,9 +142,7 @@ public final class ActionCameraPoseResolver {
 
         Vec3 rotated = switch (attachFace) {
             case FLOOR -> rotateY(shifted, yRotationForFacing(facing));
-
             case WALL -> rotateY(shifted, wallYRotationForFacing(facing));
-
             case CEILING -> {
                 Vec3 yRotated = rotateY(shifted, yRotationForFacing(facing));
                 yield rotateX(yRotated, 180.0F);
@@ -153,6 +151,29 @@ public final class ActionCameraPoseResolver {
 
         return rotated.add(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
     }
+    private static Vec3 cameraFixedOffsetBlockLocal(AttachFace attachFace, Direction facing) {
+        return rotateVectorForMount(
+                new Vec3(0.0D, CAMERA_FIXED_Y_PUSH, 0.0D),
+                attachFace,
+                facing
+        );
+    }
+
+    private static Vec3 rotateVectorForMount(
+            Vec3 vec,
+            AttachFace attachFace,
+            Direction facing
+    ) {
+        return switch (attachFace) {
+            case FLOOR -> rotateY(vec, yRotationForFacing(facing));
+            case WALL -> rotateY(vec, wallYRotationForFacing(facing));
+            case CEILING -> {
+                Vec3 yRotated = rotateY(vec, yRotationForFacing(facing));
+                yield rotateX(yRotated, 180.0F);
+            }
+        };
+    }
+
 
     private static Vec3 rotateY(Vec3 vec, float degrees) {
         double radians = Math.toRadians(degrees);

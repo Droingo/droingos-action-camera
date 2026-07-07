@@ -16,7 +16,9 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 public final class ActionCameraBlockEntity extends BlockEntity {
-    public static final double MAX_EXTENSION_DISTANCE = 1.5D;
+    public static final double DEFAULT_MAX_EXTENSION_DISTANCE = 1.5D;
+    public static final double MIN_MAX_EXTENSION_DISTANCE = 0.25D;
+    public static final double MAX_EXTENSION_DISTANCE = 5.0D;
 
     private static final int MAX_CAMERA_NAME_LENGTH = 32;
 
@@ -35,6 +37,10 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     private double extensionX;
     private double extensionY;
     private double extensionZ;
+
+    private boolean externalRigVisible = true;
+    private double maxExtensionDistance = DEFAULT_MAX_EXTENSION_DISTANCE;
+    private boolean cameraNameAlwaysVisible;
 
     private String cameraName = "Action Camera";
 
@@ -121,6 +127,18 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         return extensionEnabled ? new Vec3(extensionX, extensionY, extensionZ) : Vec3.ZERO;
     }
 
+    public boolean isExternalRigVisible() {
+        return externalRigVisible;
+    }
+
+    public double getMaxExtensionDistance() {
+        return maxExtensionDistance;
+    }
+
+    public boolean isCameraNameAlwaysVisible() {
+        return cameraNameAlwaysVisible;
+    }
+
     public String getCameraName() {
         return cameraName;
     }
@@ -149,7 +167,10 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 extensionEnabled,
                 extensionX,
                 extensionY,
-                extensionZ
+                extensionZ,
+                externalRigVisible,
+                maxExtensionDistance,
+                cameraNameAlwaysVisible
         );
     }
 
@@ -168,6 +189,44 @@ public final class ActionCameraBlockEntity extends BlockEntity {
             double extensionY,
             double extensionZ
     ) {
+        setCameraData(
+                offsetX,
+                offsetY,
+                offsetZ,
+                yawOffset,
+                pitchOffset,
+                rollOffset,
+                fovOverride,
+                smoothing,
+                cameraName,
+                extensionEnabled,
+                extensionX,
+                extensionY,
+                extensionZ,
+                externalRigVisible,
+                maxExtensionDistance,
+                cameraNameAlwaysVisible
+        );
+    }
+
+    public void setCameraData(
+            double offsetX,
+            double offsetY,
+            double offsetZ,
+            float yawOffset,
+            float pitchOffset,
+            float rollOffset,
+            float fovOverride,
+            float smoothing,
+            String cameraName,
+            boolean extensionEnabled,
+            double extensionX,
+            double extensionY,
+            double extensionZ,
+            boolean externalRigVisible,
+            double maxExtensionDistance,
+            boolean cameraNameAlwaysVisible
+    ) {
         this.offsetX = Mth.clamp(offsetX, -0.5D, 0.5D);
         this.offsetY = Mth.clamp(offsetY, -0.5D, 0.5D);
         this.offsetZ = Mth.clamp(offsetZ, -0.5D, 0.5D);
@@ -180,10 +239,16 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         this.smoothing = Mth.clamp(smoothing, 0.0F, 0.95F);
 
         this.cameraName = sanitizeCameraName(cameraName);
-
         this.extensionEnabled = extensionEnabled;
+        this.externalRigVisible = externalRigVisible;
+        this.maxExtensionDistance = clampMaxExtensionDistance(maxExtensionDistance);
+        this.cameraNameAlwaysVisible = cameraNameAlwaysVisible;
 
-        Vec3 clampedExtension = clampExtensionOffset(new Vec3(extensionX, extensionY, extensionZ));
+        Vec3 clampedExtension = clampExtensionOffset(
+                new Vec3(extensionX, extensionY, extensionZ),
+                this.maxExtensionDistance
+        );
+
         this.extensionX = clampedExtension.x;
         this.extensionY = clampedExtension.y;
         this.extensionZ = clampedExtension.z;
@@ -197,7 +262,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     }
 
     public void setExtensionData(boolean enabled, double x, double y, double z) {
-        Vec3 clampedExtension = clampExtensionOffset(new Vec3(x, y, z));
+        Vec3 clampedExtension = clampExtensionOffset(new Vec3(x, y, z), maxExtensionDistance);
 
         this.extensionEnabled = enabled;
         this.extensionX = clampedExtension.x;
@@ -212,14 +277,23 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         }
     }
 
+    public static double clampMaxExtensionDistance(double distance) {
+        return Mth.clamp(distance, MIN_MAX_EXTENSION_DISTANCE, MAX_EXTENSION_DISTANCE);
+    }
+
     public static Vec3 clampExtensionOffset(Vec3 offset) {
+        return clampExtensionOffset(offset, DEFAULT_MAX_EXTENSION_DISTANCE);
+    }
+
+    public static Vec3 clampExtensionOffset(Vec3 offset, double maxDistance) {
+        double clampedMaxDistance = clampMaxExtensionDistance(maxDistance);
         double length = offset.length();
 
-        if (length <= MAX_EXTENSION_DISTANCE || length <= 0.000001D) {
+        if (length <= clampedMaxDistance || length <= 0.000001D) {
             return offset;
         }
 
-        return offset.scale(MAX_EXTENSION_DISTANCE / length);
+        return offset.scale(clampedMaxDistance / length);
     }
 
     private static String sanitizeCameraName(String name) {
@@ -257,6 +331,10 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         tag.putDouble("ExtensionX", extensionX);
         tag.putDouble("ExtensionY", extensionY);
         tag.putDouble("ExtensionZ", extensionZ);
+
+        tag.putBoolean("ExternalRigVisible", externalRigVisible);
+        tag.putDouble("MaxExtensionDistance", maxExtensionDistance);
+        tag.putBoolean("CameraNameAlwaysVisible", cameraNameAlwaysVisible);
     }
 
     @Override
@@ -282,11 +360,21 @@ public final class ActionCameraBlockEntity extends BlockEntity {
 
         extensionEnabled = tag.getBoolean("ExtensionEnabled");
 
-        Vec3 clampedExtension = clampExtensionOffset(new Vec3(
-                tag.getDouble("ExtensionX"),
-                tag.getDouble("ExtensionY"),
-                tag.getDouble("ExtensionZ")
-        ));
+        externalRigVisible = !tag.contains("ExternalRigVisible") || tag.getBoolean("ExternalRigVisible");
+        maxExtensionDistance = tag.contains("MaxExtensionDistance")
+                ? clampMaxExtensionDistance(tag.getDouble("MaxExtensionDistance"))
+                : DEFAULT_MAX_EXTENSION_DISTANCE;
+        cameraNameAlwaysVisible = tag.contains("CameraNameAlwaysVisible")
+                && tag.getBoolean("CameraNameAlwaysVisible");
+
+        Vec3 clampedExtension = clampExtensionOffset(
+                new Vec3(
+                        tag.getDouble("ExtensionX"),
+                        tag.getDouble("ExtensionY"),
+                        tag.getDouble("ExtensionZ")
+                ),
+                maxExtensionDistance
+        );
 
         extensionX = clampedExtension.x;
         extensionY = clampedExtension.y;

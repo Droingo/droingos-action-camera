@@ -90,20 +90,19 @@ public final class ModNetworking {
                     payload.offsetX(),
                     payload.offsetY(),
                     payload.offsetZ(),
-
                     payload.yawOffset(),
                     payload.pitchOffset(),
                     payload.rollOffset(),
-
                     payload.fovOverride(),
                     payload.smoothing(),
-
                     payload.cameraName(),
-
                     payload.extensionEnabled(),
                     payload.extensionX(),
                     payload.extensionY(),
-                    payload.extensionZ()
+                    payload.extensionZ(),
+                    payload.externalRigVisible(),
+                    payload.maxExtensionDistance(),
+                    payload.cameraNameAlwaysVisible()
             );
         });
     }

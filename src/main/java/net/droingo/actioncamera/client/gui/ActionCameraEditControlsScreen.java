@@ -2,16 +2,20 @@ package net.droingo.actioncamera.client.gui;
 
 import net.droingo.actioncamera.client.ActionCameraClientPreferences;
 import net.droingo.actioncamera.client.ActionCameraClientState;
+import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.Locale;
+
 public final class ActionCameraEditControlsScreen extends Screen {
-    private static final int PANEL_WIDTH = 260;
-    private static final int PANEL_HEIGHT = 168;
+    private static final int PANEL_WIDTH = 280;
+    private static final int PANEL_HEIGHT = 226;
 
     public ActionCameraEditControlsScreen() {
         super(Component.literal("Action Camera Controls"));
@@ -38,13 +42,12 @@ public final class ActionCameraEditControlsScreen extends Screen {
         int panelX = (this.width - PANEL_WIDTH) / 2;
         int panelY = (this.height - PANEL_HEIGHT) / 2;
 
-        int buttonWidth = 116;
+        int buttonWidth = 124;
         int buttonHeight = 20;
         int gap = 8;
 
         int leftX = panelX + 12;
         int rightX = panelX + 12 + buttonWidth + gap;
-
         int y = panelY + 38;
 
         this.addRenderableWidget(Button.builder(
@@ -66,9 +69,7 @@ public final class ActionCameraEditControlsScreen extends Screen {
         y += buttonHeight + gap;
 
         this.addRenderableWidget(Button.builder(
-                Component.literal(ActionCameraClientState.isExtensionArmEnabledForHud()
-                        ? "Detach Pole"
-                        : "Attach Pole"),
+                Component.literal(ActionCameraClientState.isExtensionArmEnabledForHud() ? "Detach Pole" : "Attach Pole"),
                 button -> {
                     ActionCameraClientState.toggleExtensionArm();
                     rebuildControls();
@@ -76,11 +77,27 @@ public final class ActionCameraEditControlsScreen extends Screen {
         ).bounds(leftX, y, buttonWidth, buttonHeight).build());
 
         this.addRenderableWidget(Button.builder(
-                Component.literal(ActionCameraClientState.isExtensionPlacementModeForHud()
-                        ? "Stop Placing"
-                        : "Place Pole"),
+                Component.literal(ActionCameraClientState.isExtensionPlacementModeForHud() ? "Stop Placing" : "Place Pole"),
                 button -> {
                     ActionCameraClientState.toggleExtensionEditMode();
+                    rebuildControls();
+                }
+        ).bounds(rightX, y, buttonWidth, buttonHeight).build());
+
+        y += buttonHeight + gap;
+
+        this.addRenderableWidget(Button.builder(
+                Component.literal("Rig: " + (ActionCameraClientState.isExternalRigVisibleForHud() ? "Visible" : "Hidden")),
+                button -> {
+                    ActionCameraClientState.toggleExternalRigVisible();
+                    rebuildControls();
+                }
+        ).bounds(leftX, y, buttonWidth, buttonHeight).build());
+
+        this.addRenderableWidget(Button.builder(
+                Component.literal("Name HUD: " + (ActionCameraClientState.isCameraNameAlwaysVisibleForHud() ? "Hard" : "Normal")),
+                button -> {
+                    ActionCameraClientState.toggleCameraNameAlwaysVisible();
                     rebuildControls();
                 }
         ).bounds(rightX, y, buttonWidth, buttonHeight).build());
@@ -103,6 +120,15 @@ public final class ActionCameraEditControlsScreen extends Screen {
                     ActionCameraClientState.stopEditing(true);
                 }
         ).bounds(rightX, y, buttonWidth, buttonHeight).build());
+
+        y += buttonHeight + gap + 2;
+
+        this.addRenderableWidget(new MaxPoleLengthSlider(
+                panelX + 12,
+                y,
+                PANEL_WIDTH - 24,
+                20
+        ));
     }
 
     private void rebuildControls() {
@@ -119,9 +145,7 @@ public final class ActionCameraEditControlsScreen extends Screen {
     }
 
     private static String thirdsLabel() {
-        return ActionCameraClientPreferences.isRuleOfThirdsEnabled()
-                ? "On"
-                : "Off";
+        return ActionCameraClientPreferences.isRuleOfThirdsEnabled() ? "On" : "Off";
     }
 
     @Override
@@ -209,9 +233,11 @@ public final class ActionCameraEditControlsScreen extends Screen {
 
         boolean poleAttached = ActionCameraClientState.isExtensionArmEnabledForHud();
         boolean placingPole = ActionCameraClientState.isExtensionPlacementModeForHud();
+        boolean rigVisible = ActionCameraClientState.isExternalRigVisibleForHud();
+        boolean hardName = ActionCameraClientState.isCameraNameAlwaysVisibleForHud();
 
         String status = (poleAttached ? "Pole Attached" : "Pole Detached")
-                + "  |  "
+                + " | "
                 + (placingPole ? "Pole Placement Active" : "Camera Aim Mode");
 
         guiGraphics.drawCenteredString(
@@ -220,6 +246,19 @@ public final class ActionCameraEditControlsScreen extends Screen {
                 this.width / 2,
                 panelY + 24,
                 placingPole ? 0xFFD966 : 0xCCCCCC
+        );
+
+        String visibility = "Rig " + (rigVisible ? "Visible" : "Hidden")
+                + " | Name HUD " + (hardName ? "Hard" : "Normal")
+                + " | Max Pole "
+                + String.format(Locale.ROOT, "%.2f", ActionCameraClientState.getMaxExtensionDistanceForHud());
+
+        guiGraphics.drawCenteredString(
+                this.font,
+                Component.literal(visibility),
+                this.width / 2,
+                panelY + PANEL_HEIGHT - 42,
+                0xAAAAAA
         );
 
         guiGraphics.drawCenteredString(
@@ -244,5 +283,47 @@ public final class ActionCameraEditControlsScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    private static final class MaxPoleLengthSlider extends AbstractSliderButton {
+        private MaxPoleLengthSlider(int x, int y, int width, int height) {
+            super(
+                    x,
+                    y,
+                    width,
+                    height,
+                    Component.empty(),
+                    valueFromDistance(ActionCameraClientState.getMaxExtensionDistanceForHud())
+            );
+
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            double distance = distanceFromValue(this.value);
+            this.setMessage(Component.literal(
+                    String.format(Locale.ROOT, "Max Pole: %.2f blocks", distance)
+            ));
+        }
+
+        @Override
+        protected void applyValue() {
+            ActionCameraClientState.setMaxExtensionDistanceFromGui(distanceFromValue(this.value));
+            updateMessage();
+        }
+
+        private static double distanceFromValue(double value) {
+            double min = ActionCameraBlockEntity.MIN_MAX_EXTENSION_DISTANCE;
+            double max = ActionCameraBlockEntity.MAX_EXTENSION_DISTANCE;
+            return min + (max - min) * value;
+        }
+
+        private static double valueFromDistance(double distance) {
+            double min = ActionCameraBlockEntity.MIN_MAX_EXTENSION_DISTANCE;
+            double max = ActionCameraBlockEntity.MAX_EXTENSION_DISTANCE;
+            double clamped = ActionCameraBlockEntity.clampMaxExtensionDistance(distance);
+            return (clamped - min) / (max - min);
+        }
     }
 }

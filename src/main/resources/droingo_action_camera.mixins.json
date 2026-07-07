@@ -8,7 +8,8 @@
     "CameraMixin",
     "MouseHandlerMixin",
     "GameRendererMixin",
-    "SoundManagerMixin"
+    "SoundManagerMixin",
+    "GuiMixin"
   ],
   "injectors": {
     "defaultRequire": 1

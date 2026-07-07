@@ -83,9 +83,7 @@ public final class ClientGameEvents {
                 return;
             }
 
-            ActionCameraClientPreferences.EditOverlayMode mode =
-                    ActionCameraClientPreferences.cycleEditOverlayMode();
-
+            ActionCameraClientPreferences.EditOverlayMode mode = ActionCameraClientPreferences.cycleEditOverlayMode();
             minecraft.player.displayClientMessage(
                     Component.literal("Camera overlay: " + overlayModeLabel(mode)),
                     true
@@ -136,12 +134,10 @@ public final class ClientGameEvents {
 
         event.getInput().forwardImpulse = 0.0F;
         event.getInput().leftImpulse = 0.0F;
-
         event.getInput().up = false;
         event.getInput().down = false;
         event.getInput().left = false;
         event.getInput().right = false;
-
         event.getInput().jumping = false;
         event.getInput().shiftKeyDown = false;
     }
@@ -181,12 +177,10 @@ public final class ClientGameEvents {
                 }
 
                 BlockPos firstCamera = cameras.get(0);
-
                 ActionCameraClientState.startViewing(
                         firstCamera,
                         labelForCamera(cameras, firstCamera)
                 );
-
                 return;
             }
 
@@ -203,7 +197,6 @@ public final class ClientGameEvents {
 
             int currentIndex = current == null ? -1 : cameras.indexOf(current);
             int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % cameras.size();
-
             BlockPos nextCamera = cameras.get(nextIndex);
 
             ActionCameraClientState.startViewing(
@@ -247,13 +240,10 @@ public final class ClientGameEvents {
     private static String labelForCamera(List<BlockPos> cameras, BlockPos pos) {
         Minecraft minecraft = Minecraft.getInstance();
 
-        if (minecraft.level != null
-                && minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity camera) {
+        if (minecraft.level != null && minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity camera) {
             String customName = camera.getCameraName();
 
-            if (customName != null
-                    && !customName.isBlank()
-                    && !"Action Camera".equals(customName)) {
+            if (customName != null && !customName.isBlank() && !"Action Camera".equals(customName)) {
                 return customName.trim();
             }
         }
@@ -377,42 +367,13 @@ public final class ClientGameEvents {
         if (minecraft.level.getBlockEntity(pos) instanceof ActionCameraBlockEntity) {
             ActionCameraKnownCameras.register(pos);
             ActionCameraClientState.startEditing(pos);
-
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
         }
     }
 
-    private static void renderCameraViewingLabel(GuiGraphics guiGraphics) {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        String label = ActionCameraClientState.getActiveCameraLabel();
-
-        int x = 8;
-        int y = 8;
-        int textWidth = minecraft.font.width(label);
-
-        guiGraphics.fill(
-                x - 4,
-                y - 3,
-                x + textWidth + 5,
-                y + 11,
-                0x90000000
-        );
-
-        guiGraphics.drawString(
-                minecraft.font,
-                label,
-                x,
-                y,
-                0xFFFFFF,
-                false
-        );
-    }
-
     private static void renderCameraEditOverlay(GuiGraphics guiGraphics) {
         Minecraft minecraft = Minecraft.getInstance();
-
         int width = minecraft.getWindow().getGuiScaledWidth();
         int height = minecraft.getWindow().getGuiScaledHeight();
 
@@ -420,14 +381,11 @@ public final class ClientGameEvents {
             renderRuleOfThirds(guiGraphics, width, height);
         }
 
-        ActionCameraClientPreferences.EditOverlayMode mode =
-                ActionCameraClientPreferences.getEditOverlayMode();
+        ActionCameraClientPreferences.EditOverlayMode mode = ActionCameraClientPreferences.getEditOverlayMode();
 
         switch (mode) {
             case FULL -> renderEditHud(guiGraphics, minecraft, width, height);
-
             case SIMPLE -> renderSimpleEditHud(guiGraphics, minecraft, width, height);
-
             case OFF -> {
             }
         }
@@ -438,13 +396,11 @@ public final class ClientGameEvents {
 
         int verticalOne = width / 3;
         int verticalTwo = (width * 2) / 3;
-
         int horizontalOne = height / 3;
         int horizontalTwo = (height * 2) / 3;
 
         guiGraphics.fill(verticalOne, 0, verticalOne + 1, height, lineColor);
         guiGraphics.fill(verticalTwo, 0, verticalTwo + 1, height, lineColor);
-
         guiGraphics.fill(0, horizontalOne, width, horizontalOne + 1, lineColor);
         guiGraphics.fill(0, horizontalTwo, width, horizontalTwo + 1, lineColor);
     }
@@ -457,27 +413,28 @@ public final class ClientGameEvents {
     ) {
         boolean poleAttached = ActionCameraClientState.isExtensionArmEnabledForHud();
         boolean polePlacement = ActionCameraClientState.isExtensionPlacementModeForHud();
+        boolean rigVisible = ActionCameraClientState.isExternalRigVisibleForHud();
+        boolean hardName = ActionCameraClientState.isCameraNameAlwaysVisibleForHud();
         double distance = ActionCameraClientState.getExtensionDistanceForHud();
+        double maxDistance = ActionCameraClientState.getMaxExtensionDistanceForHud();
 
         int x = 8;
         int y = 8;
 
         String title = "Action Camera Edit";
-        String poleStatus = poleAttached
-                ? "Extension Pole: Attached"
-                : "Extension Pole: Detached";
-
-        String polePlacementStatus = polePlacement
-                ? "Pole Placement: ACTIVE"
-                : "Pole Placement: Off";
-
-        String distanceText = String.format(java.util.Locale.ROOT, "Pole Distance: %.2f blocks", distance);
+        String poleStatus = poleAttached ? "Extension Pole: Attached" : "Extension Pole: Detached";
+        String polePlacementStatus = polePlacement ? "Pole Placement: ACTIVE" : "Pole Placement: Off";
+        String distanceText = String.format(java.util.Locale.ROOT, "Pole Distance: %.2f / %.2f blocks", distance, maxDistance);
+        String rigStatus = "External Rig: " + (rigVisible ? "Visible" : "Hidden head/pole");
+        String nameHudStatus = "Name HUD: " + (hardName ? "Hard visible" : "Normal" );
 
         String[] lines = new String[]{
                 title,
                 poleStatus,
                 polePlacementStatus,
                 distanceText,
+                rigStatus,
+                nameHudStatus,
                 "Rule of Thirds: " + (ActionCameraClientPreferences.isRuleOfThirdsEnabled() ? "On" : "Off"),
                 "",
                 "Mouse: Aim camera",
@@ -499,7 +456,6 @@ public final class ClientGameEvents {
 
         int lineHeight = 10;
         int padding = 6;
-
         int panelWidth = maxWidth + padding * 2;
         int panelHeight = lines.length * lineHeight + padding * 2;
 
@@ -523,7 +479,6 @@ public final class ClientGameEvents {
 
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
-
             int color;
 
             if (i == 0) {
@@ -532,8 +487,10 @@ public final class ClientGameEvents {
                 color = poleAttached ? 0x88FF88 : 0xCCCCCC;
             } else if (line.startsWith("Pole Placement:")) {
                 color = polePlacement ? 0xFFD966 : 0xCCCCCC;
-            } else if (line.startsWith("Shift: Disabled")) {
-                color = 0xFFAA66;
+            } else if (line.startsWith("External Rig:")) {
+                color = rigVisible ? 0x88FF88 : 0xFFAA66;
+            } else if (line.startsWith("Name HUD:")) {
+                color = hardName ? 0x88CCFF : 0xCCCCCC;
             } else {
                 color = 0xDDDDDD;
             }
@@ -561,20 +518,27 @@ public final class ClientGameEvents {
     ) {
         boolean poleAttached = ActionCameraClientState.isExtensionArmEnabledForHud();
         boolean polePlacement = ActionCameraClientState.isExtensionPlacementModeForHud();
+        boolean rigVisible = ActionCameraClientState.isExternalRigVisibleForHud();
+        boolean hardName = ActionCameraClientState.isCameraNameAlwaysVisibleForHud();
 
         String poleStatus = poleAttached ? "Pole Attached" : "Pole Detached";
         String placementStatus = polePlacement ? "Placing Pole" : "Aiming Camera";
+        String rigStatus = rigVisible ? "Rig Visible" : "Rig Hidden";
+        String nameStatus = hardName ? "Name Hard" : "Name Normal";
         String thirdsStatus = ActionCameraClientPreferences.isRuleOfThirdsEnabled() ? "Thirds On" : "Thirds Off";
 
         String text = placementStatus
-                + "  |  "
+                + " | "
                 + poleStatus
-                + "  |  "
+                + " | "
+                + rigStatus
+                + " | "
+                + nameStatus
+                + " | "
                 + thirdsStatus
-                + "  |  Hold Ctrl Controls";
+                + " | Hold Ctrl Controls";
 
         int textWidth = minecraft.font.width(text);
-
         int x = (width - textWidth) / 2;
         int y = height - 64;
 
@@ -587,7 +551,6 @@ public final class ClientGameEvents {
         );
 
         int accentColor = poleAttached ? 0xFF66CC66 : 0xFF777777;
-
         guiGraphics.fill(
                 x - 6,
                 y - 4,
@@ -614,7 +577,6 @@ public final class ClientGameEvents {
             boolean polePlacement
     ) {
         String text = polePlacement ? "POLE PLACEMENT" : "CAMERA AIM";
-
         int textWidth = minecraft.font.width(text);
         int x = (width - textWidth) / 2;
         int y = 8;
@@ -681,8 +643,9 @@ public final class ClientGameEvents {
             return;
         }
 
-        if (ActionCameraClientState.isViewingCamera()) {
-            renderCameraViewingLabel(event.getGuiGraphics());
+        if (ActionCameraClientState.isViewingCamera()
+                && !ActionCameraClientState.shouldRenderHardCameraNameOverlay()) {
+            ActionCameraClientState.renderCameraNameOverlay(event.getGuiGraphics());
         }
     }
 }

@@ -30,23 +30,31 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
     private static final double FLOOR_HEAD_HINGE_Y = 2.0D / 16.0D;
     private static final double FLOOR_HEAD_HINGE_Z = 7.0D / 16.0D;
 
+    /*
+     * Ceiling pole anchor:
+     * this is the visual connection point for the extension pole.
+     */
+    private static final double CEILING_POLE_ANCHOR_X = 8.0D / 16.0D;
+    private static final double CEILING_POLE_ANCHOR_Y = 2.0D / 16.0D;
+    private static final double CEILING_POLE_ANCHOR_Z = 9.0D / 16.0D;
+
+    /*
+     * Ceiling head pivot:
+     * keep the actual head rotation pivot at the original model hinge.
+     * This stops the head from rotating around a point too far back.
+     */
+    private static final double CEILING_HEAD_PIVOT_X = 8.0D / 16.0D;
+    private static final double CEILING_HEAD_PIVOT_Y = 2.0D / 16.0D;
+    private static final double CEILING_HEAD_PIVOT_Z = 7.0D / 16.0D;
+
     private static final double WALL_HEAD_HINGE_X = 8.0D / 16.0D;
     private static final double WALL_HEAD_HINGE_Y = 7.25D / 16.0D;
     private static final double WALL_HEAD_HINGE_Z = 14.6D / 16.0D;
 
-    /*
-     * Stops a pole being rendered just because extension mode was toggled.
-     * Player must actually move the camera head by a visible amount.
-     */
-    private static final double MIN_VISIBLE_EXTENSION_DISTANCE = 0.03D;
-    /*
-     * When viewing/editing through an extension camera, the camera head is hidden.
-     * The real head would normally cover the end cap of the pole.
-     *
-     * So for the ACTIVE camera only, render the pole slightly past the hidden head
-     * so the visible end/cap is pushed out of the player's view.
-     */
+    private static final double CEILING_POLE_HEAD_ATTACH_LOCAL_Y_OFFSET = -0.5D / 16.0D;
+    private static final double CEILING_POLE_HEAD_ATTACH_LOCAL_Z_OFFSET = 0.0D;
 
+    private static final double MIN_VISIBLE_EXTENSION_DISTANCE = 0.03D;
 
     public ActionCameraBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
     }
@@ -61,23 +69,12 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
             int packedOverlay
     ) {
         BlockPos activeCameraPos = ActionCameraClientState.getActiveCameraPos();
-
         boolean isActiveCamera = ActionCameraClientState.isActive()
                 && activeCameraPos != null
                 && activeCameraPos.equals(blockEntity.getBlockPos());
 
         boolean hasVisibleExtension = hasVisibleExtension(blockEntity);
 
-        /*
-         * Normal behaviour:
-         * If the player is currently viewing/editing this camera and it has no
-         * visible extension pole, hide the whole model like before.
-         *
-         * Extension behaviour:
-         * If the player is currently viewing/editing this camera and it DOES have
-         * a visible extension pole, keep rendering the base + pole, but hide the
-         * camera head itself so you don't see the camera body you are looking through.
-         */
         if (isActiveCamera && !hasVisibleExtension) {
             return;
         }
@@ -99,6 +96,24 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         BakedModel standModel = getStandModel(attachFace);
         BakedModel headModel = getHeadModel(attachFace);
 
+        poseStack.pushPose();
+        applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
+        applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
+        renderBakedModel(
+                standModel,
+                poseStack,
+                bufferSource,
+                packedLight,
+                packedOverlay,
+                state,
+                blockEntity.getBlockPos().asLong()
+        );
+        poseStack.popPose();
+
+        if (!blockEntity.isExternalRigVisible()) {
+            return;
+        }
+
         if (hasVisibleExtension) {
             renderExtensionPole(
                     blockEntity,
@@ -113,45 +128,8 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
             );
         }
 
-        /*
-         * Stand/base stays at the original mounted position.
-         *
-         * This now still renders for the active camera ONLY when a visible
-         * extension pole exists.
-         */
-        poseStack.pushPose();
-
-        applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
-        applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
-
-        renderBakedModel(
-                standModel,
-                poseStack,
-                bufferSource,
-                packedLight,
-                packedOverlay,
-                state,
-                blockEntity.getBlockPos().asLong()
-        );
-
-        poseStack.popPose();
-
-        /*
-         * Hide the camera head when this is the active camera.
-         *
-         * Inactive camera:
-         * - render stand
-         * - render pole if present
-         * - render head
-         *
-         * Active camera with pole:
-         * - render stand
-         * - render pole
-         * - do NOT render head
-         */
         if (!isActiveCamera) {
             poseStack.pushPose();
-
             applyWorldAssemblyOffset(poseStack, attachFace, facing, mountSlot, blockEntity);
             poseStack.translate(
                     blockEntity.getExtensionX(),
@@ -160,7 +138,6 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
             );
             applyBaseMountTransformAroundBlockCenter(poseStack, attachFace, facing);
             applyLiveHeadRotation(poseStack, attachFace, blockEntity);
-
             renderBakedModel(
                     headModel,
                     poseStack,
@@ -170,7 +147,6 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
                     state,
                     blockEntity.getBlockPos().asLong() + 1L
             );
-
             poseStack.popPose();
         }
     }
@@ -234,16 +210,18 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
             Direction facing,
             int mountSlot
     ) {
-        Vec3 start = getHeadHingeBlockLocal(
+        Vec3 start = getPoleAnchorBlockLocal(
                 blockEntity,
                 attachFace,
                 facing,
                 mountSlot
         );
 
-        Vec3 end = start.add(blockEntity.getExtensionOffset());
-        Vec3 direction = end.subtract(start);
+        Vec3 end = start
+                .add(blockEntity.getExtensionOffset())
+                .add(poleHeadAttachmentOffset(attachFace, facing));
 
+        Vec3 direction = end.subtract(start);
         double length = direction.length();
 
         if (length < MIN_VISIBLE_EXTENSION_DISTANCE) {
@@ -251,19 +229,6 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         }
 
         Vec3 normalizedDirection = direction.normalize();
-
-        /*
-         * Active-camera-only visual cheat:
-         *
-         * Outside the camera, the pole should end exactly at the camera head hinge.
-         * But while looking through this camera, the head is hidden. Without the head
-         * model there, the pole cap becomes visible.
-         *
-         * So only for the active camera, extend the rendered pole slightly past the
-         * hidden head. This does not change the saved extension offset or the camera
-         * position. It is purely visual.
-         */
-
 
         Quaternionf rotation = new Quaternionf().rotationTo(
                 0.0F,
@@ -276,18 +241,6 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         poseStack.pushPose();
 
-        /*
-         * The pole model is authored as:
-         * - centered on X/Y
-         * - one block long along +Z
-         * - starting at Z 0 and ending at Z 1
-         *
-         * So we:
-         * 1. move to hinge start
-         * 2. rotate +Z to point at the camera head
-         * 3. scale Z to the real extension length
-         * 4. shift model X/Y so its centre sits on the hinge line
-         */
         poseStack.translate(start.x, start.y, start.z);
         poseStack.mulPose(rotation);
         poseStack.scale(1.0F, 1.0F, (float) length);
@@ -306,7 +259,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         poseStack.popPose();
     }
 
-    private static Vec3 getHeadHingeBlockLocal(
+    private static Vec3 getPoleAnchorBlockLocal(
             ActionCameraBlockEntity blockEntity,
             AttachFace attachFace,
             Direction facing,
@@ -314,22 +267,22 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
     ) {
         Vec3 slotOffset = ActionCameraMountSlot.worldAssemblyOffset(attachFace, facing, mountSlot);
 
-        Vec3 hingeBeforeMountRotation = new Vec3(
-                hingeXForAttachFace(attachFace),
-                hingeYForAttachFace(attachFace),
-                hingeZForAttachFace(attachFace)
+        Vec3 anchorBeforeMountRotation = new Vec3(
+                poleAnchorXForAttachFace(attachFace),
+                poleAnchorYForAttachFace(attachFace),
+                poleAnchorZForAttachFace(attachFace)
         );
 
-        Vec3 hingeAfterMountRotation = rotatePointAroundBlockCenter(
-                hingeBeforeMountRotation,
+        Vec3 anchorAfterMountRotation = rotatePointAroundBlockCenter(
+                anchorBeforeMountRotation,
                 attachFace,
                 facing
         );
 
         return new Vec3(
-                slotOffset.x + blockEntity.getOffsetX() + hingeAfterMountRotation.x,
-                slotOffset.y + blockEntity.getOffsetY() + hingeAfterMountRotation.y,
-                slotOffset.z + blockEntity.getOffsetZ() + hingeAfterMountRotation.z
+                slotOffset.x + blockEntity.getOffsetX() + anchorAfterMountRotation.x,
+                slotOffset.y + blockEntity.getOffsetY() + anchorAfterMountRotation.y,
+                slotOffset.z + blockEntity.getOffsetZ() + anchorAfterMountRotation.z
         );
     }
 
@@ -342,9 +295,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         Vec3 rotated = switch (attachFace) {
             case FLOOR -> rotateY(shifted, yRotationForFacing(facing));
-
             case WALL -> rotateY(shifted, wallYRotationForFacing(facing));
-
             case CEILING -> {
                 Vec3 yRotated = rotateY(shifted, yRotationForFacing(facing));
                 yield rotateX(yRotated, 180.0F);
@@ -352,6 +303,37 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         };
 
         return rotated.add(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
+    }
+
+    private static Vec3 poleHeadAttachmentOffset(AttachFace attachFace, Direction facing) {
+        if (attachFace != AttachFace.CEILING) {
+            return Vec3.ZERO;
+        }
+
+        return rotateVectorForMount(
+                new Vec3(
+                        0.0D,
+                        CEILING_POLE_HEAD_ATTACH_LOCAL_Y_OFFSET,
+                        CEILING_POLE_HEAD_ATTACH_LOCAL_Z_OFFSET
+                ),
+                attachFace,
+                facing
+        );
+    }
+
+    private static Vec3 rotateVectorForMount(
+            Vec3 vec,
+            AttachFace attachFace,
+            Direction facing
+    ) {
+        return switch (attachFace) {
+            case FLOOR -> rotateY(vec, yRotationForFacing(facing));
+            case WALL -> rotateY(vec, wallYRotationForFacing(facing));
+            case CEILING -> {
+                Vec3 yRotated = rotateY(vec, yRotationForFacing(facing));
+                yield rotateX(yRotated, 180.0F);
+            }
+        };
     }
 
     private static Vec3 rotateY(Vec3 vec, float degrees) {
@@ -385,9 +367,7 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
 
         switch (attachFace) {
             case FLOOR -> poseStack.mulPose(Axis.YP.rotationDegrees(yRotationForFacing(facing)));
-
             case WALL -> poseStack.mulPose(Axis.YP.rotationDegrees(wallYRotationForFacing(facing)));
-
             case CEILING -> {
                 poseStack.mulPose(Axis.YP.rotationDegrees(yRotationForFacing(facing)));
                 poseStack.mulPose(Axis.XP.rotationDegrees(180.0F));
@@ -406,25 +386,15 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         float visualPitch = visualPitchForAttachFace(attachFace, blockEntity.getPitchOffset());
         float visualRoll = blockEntity.getRollOffset();
 
-        double hingeX = hingeXForAttachFace(attachFace);
-        double hingeY = hingeYForAttachFace(attachFace);
-        double hingeZ = hingeZForAttachFace(attachFace);
+        double hingeX = headPivotXForAttachFace(attachFace);
+        double hingeY = headPivotYForAttachFace(attachFace);
+        double hingeZ = headPivotZForAttachFace(attachFace);
 
         poseStack.translate(hingeX, hingeY, hingeZ);
-
         poseStack.mulPose(Axis.YP.rotationDegrees(visualYaw));
         poseStack.mulPose(Axis.XP.rotationDegrees(visualPitch));
         poseStack.mulPose(Axis.ZP.rotationDegrees(visualRoll));
-
-        /*
-         * Visual-only lens/back correction.
-         *
-         * Wall model still needs this correction. Floor/ceiling were visually
-         * backwards with this correction after the mount-slot renderer rewrite,
-         * so they now use 0 degrees here.
-         */
         poseStack.mulPose(Axis.YP.rotationDegrees(lensBackCorrectionDegrees(attachFace)));
-
         poseStack.translate(-hingeX, -hingeY, -hingeZ);
     }
 
@@ -435,27 +405,53 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
         };
     }
 
-    private static double hingeXForAttachFace(AttachFace attachFace) {
+    private static double poleAnchorXForAttachFace(AttachFace attachFace) {
         return switch (attachFace) {
-            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_X;
+            case FLOOR -> FLOOR_HEAD_HINGE_X;
+            case CEILING -> CEILING_POLE_ANCHOR_X;
             case WALL -> WALL_HEAD_HINGE_X;
         };
     }
 
-    private static double hingeYForAttachFace(AttachFace attachFace) {
+    private static double poleAnchorYForAttachFace(AttachFace attachFace) {
         return switch (attachFace) {
-            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_Y;
+            case FLOOR -> FLOOR_HEAD_HINGE_Y;
+            case CEILING -> CEILING_POLE_ANCHOR_Y;
             case WALL -> WALL_HEAD_HINGE_Y;
         };
     }
 
-    private static double hingeZForAttachFace(AttachFace attachFace) {
+    private static double poleAnchorZForAttachFace(AttachFace attachFace) {
         return switch (attachFace) {
-            case FLOOR, CEILING -> FLOOR_HEAD_HINGE_Z;
+            case FLOOR -> FLOOR_HEAD_HINGE_Z;
+            case CEILING -> CEILING_POLE_ANCHOR_Z;
             case WALL -> WALL_HEAD_HINGE_Z;
         };
     }
 
+    private static double headPivotXForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR -> FLOOR_HEAD_HINGE_X;
+            case CEILING -> CEILING_HEAD_PIVOT_X;
+            case WALL -> WALL_HEAD_HINGE_X;
+        };
+    }
+
+    private static double headPivotYForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR -> FLOOR_HEAD_HINGE_Y;
+            case CEILING -> CEILING_HEAD_PIVOT_Y;
+            case WALL -> WALL_HEAD_HINGE_Y;
+        };
+    }
+
+    private static double headPivotZForAttachFace(AttachFace attachFace) {
+        return switch (attachFace) {
+            case FLOOR -> FLOOR_HEAD_HINGE_Z;
+            case CEILING -> CEILING_HEAD_PIVOT_Z;
+            case WALL -> WALL_HEAD_HINGE_Z;
+        };
+    }
     private static float visualYawForAttachFace(float savedYaw) {
         return -savedYaw;
     }
@@ -498,12 +494,10 @@ public final class ActionCameraBlockEntityRenderer implements BlockEntityRendere
     ) {
         Minecraft minecraft = Minecraft.getInstance();
         ModelBlockRenderer modelRenderer = minecraft.getBlockRenderer().getModelRenderer();
-
         RandomSource random = RandomSource.create();
 
         for (RenderType renderType : model.getRenderTypes(state, random, ModelData.EMPTY)) {
             random.setSeed(seed);
-
             VertexConsumer vertexConsumer = bufferSource.getBuffer(renderType);
 
             modelRenderer.renderModel(

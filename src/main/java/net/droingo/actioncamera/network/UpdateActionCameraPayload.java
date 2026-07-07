@@ -21,7 +21,10 @@ public record UpdateActionCameraPayload(
         boolean extensionEnabled,
         double extensionX,
         double extensionY,
-        double extensionZ
+        double extensionZ,
+        boolean externalRigVisible,
+        double maxExtensionDistance,
+        boolean cameraNameAlwaysVisible
 ) implements CustomPacketPayload {
     public static final Type<UpdateActionCameraPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(DroingoActionCamera.MOD_ID, "update_action_camera")
@@ -44,7 +47,10 @@ public record UpdateActionCameraPayload(
                     buffer.readBoolean(),
                     buffer.readDouble(),
                     buffer.readDouble(),
-                    buffer.readDouble()
+                    buffer.readDouble(),
+                    buffer.readBoolean(),
+                    buffer.readDouble(),
+                    buffer.readBoolean()
             );
         }
 
@@ -69,11 +75,15 @@ public record UpdateActionCameraPayload(
             buffer.writeDouble(payload.extensionX());
             buffer.writeDouble(payload.extensionY());
             buffer.writeDouble(payload.extensionZ());
+
+            buffer.writeBoolean(payload.externalRigVisible());
+            buffer.writeDouble(payload.maxExtensionDistance());
+            buffer.writeBoolean(payload.cameraNameAlwaysVisible());
         }
     };
 
     @Override
-    public Type<UpdateActionCameraPayload> type() {
+    public Type<? extends CustomPacketPayload> type() {
         return TYPE;
     }
 }
