@@ -93,13 +93,33 @@ public final class ActionCameraPoseResolver {
                 camera.getFovOverride()
         );
 
-        return ActionCameraSublevelHooks.transformCameraPoseIfNeeded(
+        ActionCameraPose transformedPose = ActionCameraSublevelHooks.transformCameraPoseIfNeeded(
                 level,
                 pos,
                 state,
                 basePose,
                 partialTick
         );
+
+        /*
+         * Sable-safe horizon lock.
+         *
+         * Setting local roll to 0 before this point is not enough, because a
+         * Sable sublevel can rotate the final rendered camera and introduce a
+         * new world-space roll. The final roll must be clamped after the
+         * sublevel transform.
+         */
+        if (camera.isHorizonLevelingEnabled()) {
+            return new ActionCameraPose(
+                    transformedPose.position(),
+                    transformedPose.yaw(),
+                    transformedPose.pitch(),
+                    0.0F,
+                    transformedPose.fovOverride()
+            );
+        }
+
+        return transformedPose;
     }
 
     private static Vec3 getPoleCameraAnchorBlockLocal(
@@ -151,6 +171,7 @@ public final class ActionCameraPoseResolver {
 
         return rotated.add(BLOCK_CENTER, BLOCK_CENTER, BLOCK_CENTER);
     }
+
     private static Vec3 cameraFixedOffsetBlockLocal(AttachFace attachFace, Direction facing) {
         return rotateVectorForMount(
                 new Vec3(0.0D, CAMERA_FIXED_Y_PUSH, 0.0D),
@@ -173,7 +194,6 @@ public final class ActionCameraPoseResolver {
             }
         };
     }
-
 
     private static Vec3 rotateY(Vec3 vec, float degrees) {
         double radians = Math.toRadians(degrees);

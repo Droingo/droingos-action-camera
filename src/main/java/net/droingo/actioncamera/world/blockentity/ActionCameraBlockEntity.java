@@ -41,6 +41,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     private boolean externalRigVisible = true;
     private double maxExtensionDistance = DEFAULT_MAX_EXTENSION_DISTANCE;
     private boolean cameraNameAlwaysVisible;
+    private boolean horizonLevelingEnabled;
 
     private String cameraName = "Action Camera";
 
@@ -139,6 +140,10 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         return cameraNameAlwaysVisible;
     }
 
+    public boolean isHorizonLevelingEnabled() {
+        return horizonLevelingEnabled;
+    }
+
     public String getCameraName() {
         return cameraName;
     }
@@ -170,7 +175,8 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 extensionZ,
                 externalRigVisible,
                 maxExtensionDistance,
-                cameraNameAlwaysVisible
+                cameraNameAlwaysVisible,
+                horizonLevelingEnabled
         );
     }
 
@@ -205,7 +211,8 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 extensionZ,
                 externalRigVisible,
                 maxExtensionDistance,
-                cameraNameAlwaysVisible
+                cameraNameAlwaysVisible,
+                horizonLevelingEnabled
         );
     }
 
@@ -227,6 +234,46 @@ public final class ActionCameraBlockEntity extends BlockEntity {
             double maxExtensionDistance,
             boolean cameraNameAlwaysVisible
     ) {
+        setCameraData(
+                offsetX,
+                offsetY,
+                offsetZ,
+                yawOffset,
+                pitchOffset,
+                rollOffset,
+                fovOverride,
+                smoothing,
+                cameraName,
+                extensionEnabled,
+                extensionX,
+                extensionY,
+                extensionZ,
+                externalRigVisible,
+                maxExtensionDistance,
+                cameraNameAlwaysVisible,
+                horizonLevelingEnabled
+        );
+    }
+
+    public void setCameraData(
+            double offsetX,
+            double offsetY,
+            double offsetZ,
+            float yawOffset,
+            float pitchOffset,
+            float rollOffset,
+            float fovOverride,
+            float smoothing,
+            String cameraName,
+            boolean extensionEnabled,
+            double extensionX,
+            double extensionY,
+            double extensionZ,
+            boolean externalRigVisible,
+            double maxExtensionDistance,
+            boolean cameraNameAlwaysVisible,
+            boolean horizonLevelingEnabled
+    ) {
         this.offsetX = Mth.clamp(offsetX, -0.5D, 0.5D);
         this.offsetY = Mth.clamp(offsetY, -0.5D, 0.5D);
         this.offsetZ = Mth.clamp(offsetZ, -0.5D, 0.5D);
@@ -243,6 +290,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         this.externalRigVisible = externalRigVisible;
         this.maxExtensionDistance = clampMaxExtensionDistance(maxExtensionDistance);
         this.cameraNameAlwaysVisible = cameraNameAlwaysVisible;
+        this.horizonLevelingEnabled = horizonLevelingEnabled;
 
         Vec3 clampedExtension = clampExtensionOffset(
                 new Vec3(extensionX, extensionY, extensionZ),
@@ -335,6 +383,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         tag.putBoolean("ExternalRigVisible", externalRigVisible);
         tag.putDouble("MaxExtensionDistance", maxExtensionDistance);
         tag.putBoolean("CameraNameAlwaysVisible", cameraNameAlwaysVisible);
+        tag.putBoolean("HorizonLevelingEnabled", horizonLevelingEnabled);
     }
 
     @Override
@@ -366,6 +415,8 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 : DEFAULT_MAX_EXTENSION_DISTANCE;
         cameraNameAlwaysVisible = tag.contains("CameraNameAlwaysVisible")
                 && tag.getBoolean("CameraNameAlwaysVisible");
+        horizonLevelingEnabled = tag.contains("HorizonLevelingEnabled")
+                && tag.getBoolean("HorizonLevelingEnabled");
 
         Vec3 clampedExtension = clampExtensionOffset(
                 new Vec3(

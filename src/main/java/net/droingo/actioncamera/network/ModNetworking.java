@@ -102,7 +102,8 @@ public final class ModNetworking {
                     payload.extensionZ(),
                     payload.externalRigVisible(),
                     payload.maxExtensionDistance(),
-                    payload.cameraNameAlwaysVisible()
+                    payload.cameraNameAlwaysVisible(),
+                    payload.horizonLevelingEnabled()
             );
         });
     }

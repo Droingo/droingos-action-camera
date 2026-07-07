@@ -54,6 +54,7 @@ public final class ActionCameraClientState {
     private static boolean editExternalRigVisible = true;
     private static double editMaxExtensionDistance = ActionCameraBlockEntity.DEFAULT_MAX_EXTENSION_DISTANCE;
     private static boolean editCameraNameAlwaysVisible;
+    private static boolean editHorizonLevelingEnabled;
 
     private static boolean extensionEditMode;
     private static boolean editControlsOpen;
@@ -112,6 +113,10 @@ public final class ActionCameraClientState {
 
     public static boolean isCameraNameAlwaysVisibleForHud() {
         return isEditingCamera() && editCameraNameAlwaysVisible;
+    }
+
+    public static boolean isHorizonLevelingEnabledForHud() {
+        return isEditingCamera() && editHorizonLevelingEnabled;
     }
 
     public static double getMaxExtensionDistanceForHud() {
@@ -236,6 +241,7 @@ public final class ActionCameraClientState {
         editExternalRigVisible = camera.isExternalRigVisible();
         editMaxExtensionDistance = camera.getMaxExtensionDistance();
         editCameraNameAlwaysVisible = camera.isCameraNameAlwaysVisible();
+        editHorizonLevelingEnabled = camera.isHorizonLevelingEnabled();
 
         extensionEditMode = false;
         editControlsOpen = false;
@@ -333,6 +339,30 @@ public final class ActionCameraClientState {
         applyLiveEditToClientBlockEntity();
         dirty = true;
         saveCooldownTicks = 0;
+    }
+
+    public static void toggleHorizonLeveling() {
+        if (!isEditingCamera()) {
+            return;
+        }
+
+        editHorizonLevelingEnabled = !editHorizonLevelingEnabled;
+
+        /*
+         * If the user asks for a level horizon, clear local roll too.
+         * The important Sable-safe part happens in ActionCameraPoseResolver,
+         * after the sublevel transform, where final world roll is forced to 0.
+         */
+        if (editHorizonLevelingEnabled) {
+            editRollOffset = 0.0F;
+        }
+
+        smoothedPose = null;
+
+        applyLiveEditToClientBlockEntity();
+        dirty = true;
+        saveCooldownTicks = 0;
+        sendUpdateToServer();
     }
 
     public static void setMaxExtensionDistanceFromGui(double distance) {
@@ -603,7 +633,8 @@ public final class ActionCameraClientState {
                     editExtensionZ,
                     editExternalRigVisible,
                     editMaxExtensionDistance,
-                    editCameraNameAlwaysVisible
+                    editCameraNameAlwaysVisible,
+                    editHorizonLevelingEnabled
             );
         }
     }
@@ -630,7 +661,8 @@ public final class ActionCameraClientState {
                 editExtensionZ,
                 editExternalRigVisible,
                 editMaxExtensionDistance,
-                editCameraNameAlwaysVisible
+                editCameraNameAlwaysVisible,
+                editHorizonLevelingEnabled
         ));
 
         dirty = false;
@@ -861,6 +893,25 @@ public final class ActionCameraClientState {
                 new Vector3f(accessor.droingoActionCamera$getLeft()),
                 accessor.droingoActionCamera$isDetached()
         );
+    }
+
+
+    public static void levelEditingHorizon() {
+        if (!isEditingCamera()) {
+            return;
+        }
+
+        if (!editHorizonLevelingEnabled) {
+            toggleHorizonLeveling();
+            return;
+        }
+
+        editRollOffset = 0.0F;
+        smoothedPose = null;
+        applyLiveEditToClientBlockEntity();
+        dirty = true;
+        saveCooldownTicks = 0;
+        sendUpdateToServer();
     }
 
     private static void forceVanillaAudioForExit() {

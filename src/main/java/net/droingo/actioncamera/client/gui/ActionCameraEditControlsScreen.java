@@ -15,7 +15,7 @@ import java.util.Locale;
 
 public final class ActionCameraEditControlsScreen extends Screen {
     private static final int PANEL_WIDTH = 280;
-    private static final int PANEL_HEIGHT = 226;
+    private static final int PANEL_HEIGHT = 254;
 
     public ActionCameraEditControlsScreen() {
         super(Component.literal("Action Camera Controls"));
@@ -105,12 +105,22 @@ public final class ActionCameraEditControlsScreen extends Screen {
         y += buttonHeight + gap;
 
         this.addRenderableWidget(Button.builder(
+                Component.literal("Horizon: " + (ActionCameraClientState.isHorizonLevelingEnabledForHud() ? "Level" : "Free")),
+                button -> {
+                    ActionCameraClientState.toggleHorizonLeveling();
+                    rebuildControls();
+                }
+        ).bounds(leftX, y, buttonWidth, buttonHeight).build());
+
+        this.addRenderableWidget(Button.builder(
                 Component.literal("Thirds: " + thirdsLabel()),
                 button -> {
                     ActionCameraClientPreferences.toggleRuleOfThirdsEnabled();
                     rebuildControls();
                 }
-        ).bounds(leftX, y, buttonWidth, buttonHeight).build());
+        ).bounds(rightX, y, buttonWidth, buttonHeight).build());
+
+        y += buttonHeight + gap;
 
         this.addRenderableWidget(Button.builder(
                 Component.literal("Save & Exit"),
@@ -119,7 +129,7 @@ public final class ActionCameraEditControlsScreen extends Screen {
                     Minecraft.getInstance().setScreen(null);
                     ActionCameraClientState.stopEditing(true);
                 }
-        ).bounds(rightX, y, buttonWidth, buttonHeight).build());
+        ).bounds(leftX, y, PANEL_WIDTH - 24, buttonHeight).build());
 
         y += buttonHeight + gap + 2;
 
@@ -235,6 +245,7 @@ public final class ActionCameraEditControlsScreen extends Screen {
         boolean placingPole = ActionCameraClientState.isExtensionPlacementModeForHud();
         boolean rigVisible = ActionCameraClientState.isExternalRigVisibleForHud();
         boolean hardName = ActionCameraClientState.isCameraNameAlwaysVisibleForHud();
+        boolean horizonLevel = ActionCameraClientState.isHorizonLevelingEnabledForHud();
 
         String status = (poleAttached ? "Pole Attached" : "Pole Detached")
                 + " | "
@@ -250,6 +261,7 @@ public final class ActionCameraEditControlsScreen extends Screen {
 
         String visibility = "Rig " + (rigVisible ? "Visible" : "Hidden")
                 + " | Name HUD " + (hardName ? "Hard" : "Normal")
+                + " | Horizon " + (horizonLevel ? "Level" : "Free")
                 + " | Max Pole "
                 + String.format(Locale.ROOT, "%.2f", ActionCameraClientState.getMaxExtensionDistanceForHud());
 
