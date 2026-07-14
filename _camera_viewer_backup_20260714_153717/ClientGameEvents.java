@@ -4,7 +4,6 @@ import dev.ryanhcode.sable.companion.SableCompanion;
 import net.droingo.actioncamera.DroingoActionCamera;
 import net.droingo.actioncamera.client.gui.ActionCameraEditControlsScreen;
 import net.droingo.actioncamera.client.gui.ActionCameraRenameScreen;
-import net.droingo.actioncamera.client.gui.ActionCameraViewerScreen;
 import net.droingo.actioncamera.world.ActionCameraKnownCameras;
 import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.client.Minecraft;
@@ -147,32 +146,63 @@ public final class ClientGameEvents {
         Minecraft minecraft = Minecraft.getInstance();
 
         while (ActionCameraKeyMappings.TOGGLE_ACTION_CAMERA_VIEW.consumeClick()) {
-            if (
-                    minecraft.player == null
-                            || minecraft.level == null
-            ) {
+            if (minecraft.player == null || minecraft.level == null) {
                 return;
             }
 
-            /*
-             * C never opens the viewer while directly editing a camera.
-             * Edit mode remains exclusive to right-clicking the camera block.
-             */
             if (ActionCameraClientState.isEditingCamera()) {
                 return;
             }
 
-            /*
-             * Do not replace unrelated menus such as chat or inventory.
-             */
-            if (
-                    minecraft.screen != null
-                            && !(minecraft.screen instanceof ActionCameraViewerScreen)
-            ) {
+            BlockPos lookedAtCamera = getLookedAtCameraPos(minecraft);
+
+            if (lookedAtCamera != null) {
+                ActionCameraKnownCameras.register(lookedAtCamera);
+            }
+
+            List<BlockPos> cameras = collectKnownCameraPositions(minecraft);
+
+            if (!ActionCameraClientState.isViewingCamera()) {
+                if (lookedAtCamera != null) {
+                    ActionCameraClientState.startViewing(
+                            lookedAtCamera,
+                            labelForCamera(cameras, lookedAtCamera)
+                    );
+                    return;
+                }
+
+                if (cameras.isEmpty()) {
+                    minecraft.player.displayClientMessage(Component.literal("No loaded Action Cameras nearby"), true);
+                    return;
+                }
+
+                BlockPos firstCamera = cameras.get(0);
+                ActionCameraClientState.startViewing(
+                        firstCamera,
+                        labelForCamera(cameras, firstCamera)
+                );
                 return;
             }
 
-            ActionCameraViewerScreen.open();
+            BlockPos current = ActionCameraClientState.getActiveCameraPos();
+
+            if (current != null) {
+                ActionCameraKnownCameras.register(current);
+            }
+
+            if (cameras.isEmpty()) {
+                minecraft.player.displayClientMessage(Component.literal("No loaded Action Cameras nearby"), true);
+                return;
+            }
+
+            int currentIndex = current == null ? -1 : cameras.indexOf(current);
+            int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % cameras.size();
+            BlockPos nextCamera = cameras.get(nextIndex);
+
+            ActionCameraClientState.startViewing(
+                    nextCamera,
+                    labelForCamera(cameras, nextCamera)
+            );
         }
     }
 
@@ -227,7 +257,7 @@ public final class ClientGameEvents {
         return "Cam " + (index + 1);
     }
 
-    public static BlockPos getLookedAtCameraPos(Minecraft minecraft) {
+    private static BlockPos getLookedAtCameraPos(Minecraft minecraft) {
         if (minecraft.level == null) {
             return null;
         }
@@ -247,7 +277,7 @@ public final class ClientGameEvents {
         return null;
     }
 
-    public static List<BlockPos> collectKnownCameraPositions(Minecraft minecraft) {
+    private static List<BlockPos> collectKnownCameraPositions(Minecraft minecraft) {
         Set<BlockPos> cameraSet = new LinkedHashSet<>();
 
         if (minecraft.level == null || minecraft.player == null) {
@@ -613,11 +643,8 @@ public final class ClientGameEvents {
             return;
         }
 
-        if (
-                ActionCameraClientState.isViewingCamera()
-                        && !ActionCameraClientState.shouldRenderHardCameraNameOverlay()
-                        && !(Minecraft.getInstance().screen instanceof ActionCameraViewerScreen)
-        ) {
+        if (ActionCameraClientState.isViewingCamera()
+                && !ActionCameraClientState.shouldRenderHardCameraNameOverlay()) {
             ActionCameraClientState.renderCameraNameOverlay(event.getGuiGraphics());
         }
     }
