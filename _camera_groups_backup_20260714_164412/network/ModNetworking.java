@@ -13,7 +13,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public final class ModNetworking {
-    private static final String NETWORK_VERSION = "2";
+    private static final String NETWORK_VERSION = "1";
 
     private ModNetworking() {
     }
@@ -103,9 +103,7 @@ public final class ModNetworking {
                     payload.externalRigVisible(),
                     payload.maxExtensionDistance(),
                     payload.cameraNameAlwaysVisible(),
-                    payload.horizonLevelingEnabled(),
-                    payload.cameraGroup(),
-                    payload.cameraGroupColor()
+                    payload.horizonLevelingEnabled()
             );
         });
     }

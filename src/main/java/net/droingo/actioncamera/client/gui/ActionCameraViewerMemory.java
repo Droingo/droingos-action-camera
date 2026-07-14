@@ -5,136 +5,63 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
-/**
- * Client-side camera viewer memory.
- *
- * State is separated by player UUID and dimension so that:
- * - different players do not share camera choices
- * - an Overworld BlockPos is not accidentally reused in another dimension
- */
 final class ActionCameraViewerMemory {
     private static final Map<MemoryKey, MemoryState> STATES = new HashMap<>();
 
-    private ActionCameraViewerMemory() {
-    }
+    private ActionCameraViewerMemory() {}
 
     static Snapshot getSnapshot(Minecraft minecraft) {
-        MemoryKey key = createKey(minecraft);
+        MemoryState state = getState(minecraft, false);
+        if (state == null) return new Snapshot(null, null, 0, Set.of());
+        return new Snapshot(copy(state.lastViewedCamera), copy(state.lastSelectedCamera),
+                Math.max(0, state.scrollRows), Set.copyOf(state.expandedGroups));
+    }
 
-        if (key == null) {
-            return new Snapshot(null, null, 0);
+    static void rememberViewedCamera(Minecraft minecraft, BlockPos pos) {
+        MemoryState state = getState(minecraft, true);
+        if (state != null && pos != null) state.lastViewedCamera = pos.immutable();
+    }
+
+    static void rememberSelectedCamera(Minecraft minecraft, BlockPos pos) {
+        MemoryState state = getState(minecraft, true);
+        if (state != null && pos != null) state.lastSelectedCamera = pos.immutable();
+    }
+
+    static void rememberScrollRows(Minecraft minecraft, int rows) {
+        MemoryState state = getState(minecraft, true);
+        if (state != null) state.scrollRows = Math.max(0, rows);
+    }
+
+    static void rememberExpandedGroups(Minecraft minecraft, Set<String> groups) {
+        MemoryState state = getState(minecraft, true);
+        if (state != null) {
+            state.expandedGroups.clear();
+            if (groups != null) state.expandedGroups.addAll(groups);
         }
-
-        MemoryState state = STATES.get(key);
-
-        if (state == null) {
-            return new Snapshot(null, null, 0);
-        }
-
-        return new Snapshot(
-                immutableOrNull(state.lastViewedCamera),
-                immutableOrNull(state.lastSelectedCamera),
-                Math.max(0, state.scrollRows)
-        );
     }
 
-    static void rememberViewedCamera(
-            Minecraft minecraft,
-            BlockPos position
-    ) {
-        MemoryState state = getOrCreateState(minecraft);
-
-        if (state == null || position == null) {
-            return;
-        }
-
-        state.lastViewedCamera = position.immutable();
+    private static MemoryState getState(Minecraft minecraft, boolean create) {
+        if (minecraft == null || minecraft.player == null || minecraft.level == null) return null;
+        MemoryKey key = new MemoryKey(minecraft.player.getUUID(), minecraft.level.dimension().location());
+        return create ? STATES.computeIfAbsent(key, ignored -> new MemoryState()) : STATES.get(key);
     }
 
-    static void rememberSelectedCamera(
-            Minecraft minecraft,
-            BlockPos position
-    ) {
-        MemoryState state = getOrCreateState(minecraft);
+    private static BlockPos copy(BlockPos pos) { return pos == null ? null : pos.immutable(); }
 
-        if (state == null || position == null) {
-            return;
-        }
+    record Snapshot(BlockPos lastViewedCamera, BlockPos lastSelectedCamera, int scrollRows,
+                    Set<String> expandedGroups) {}
 
-        state.lastSelectedCamera = position.immutable();
-    }
-
-    static void rememberScrollRows(
-            Minecraft minecraft,
-            int scrollRows
-    ) {
-        MemoryState state = getOrCreateState(minecraft);
-
-        if (state == null) {
-            return;
-        }
-
-        state.scrollRows = Math.max(0, scrollRows);
-    }
-
-    private static MemoryState getOrCreateState(Minecraft minecraft) {
-        MemoryKey key = createKey(minecraft);
-
-        if (key == null) {
-            return null;
-        }
-
-        return STATES.computeIfAbsent(
-                key,
-                ignored -> new MemoryState()
-        );
-    }
-
-    private static MemoryKey createKey(Minecraft minecraft) {
-        if (
-                minecraft == null
-                        || minecraft.player == null
-                        || minecraft.level == null
-        ) {
-            return null;
-        }
-
-        UUID playerId = minecraft.player.getUUID();
-
-        ResourceLocation dimension =
-                minecraft.level.dimension().location();
-
-        return new MemoryKey(
-                playerId,
-                dimension
-        );
-    }
-
-    private static BlockPos immutableOrNull(BlockPos position) {
-        return position == null
-                ? null
-                : position.immutable();
-    }
-
-    record Snapshot(
-            BlockPos lastViewedCamera,
-            BlockPos lastSelectedCamera,
-            int scrollRows
-    ) {
-    }
-
-    private record MemoryKey(
-            UUID playerId,
-            ResourceLocation dimension
-    ) {
-    }
+    private record MemoryKey(UUID playerId, ResourceLocation dimension) {}
 
     private static final class MemoryState {
         private BlockPos lastViewedCamera;
         private BlockPos lastSelectedCamera;
         private int scrollRows;
+        private final Set<String> expandedGroups = new HashSet<>();
     }
 }

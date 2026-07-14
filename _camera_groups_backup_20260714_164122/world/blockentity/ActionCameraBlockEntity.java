@@ -21,8 +21,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     public static final double MAX_EXTENSION_DISTANCE = 5.0D;
 
     private static final int MAX_CAMERA_NAME_LENGTH = 32;
-    private static final int MAX_CAMERA_GROUP_LENGTH = 24;
-    public static final int DEFAULT_GROUP_COLOR = 0x4E91B8;
 
     private double offsetX;
     private double offsetY;
@@ -46,8 +44,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
     private boolean horizonLevelingEnabled;
 
     private String cameraName = "Action Camera";
-    private String cameraGroup = "";
-    private int cameraGroupColor = DEFAULT_GROUP_COLOR;
 
     public ActionCameraBlockEntity(BlockPos pos, BlockState blockState) {
         super(ModBlockEntities.ACTION_CAMERA.get(), pos, blockState);
@@ -152,14 +148,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         return cameraName;
     }
 
-    public String getCameraGroup() {
-        return cameraGroup;
-    }
-
-    public int getCameraGroupColor() {
-        return cameraGroupColor;
-    }
-
     public void setCameraData(
             double offsetX,
             double offsetY,
@@ -188,9 +176,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 externalRigVisible,
                 maxExtensionDistance,
                 cameraNameAlwaysVisible,
-                horizonLevelingEnabled,
-                cameraGroup,
-                cameraGroupColor
+                horizonLevelingEnabled
         );
     }
 
@@ -226,9 +212,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 externalRigVisible,
                 maxExtensionDistance,
                 cameraNameAlwaysVisible,
-                horizonLevelingEnabled,
-                cameraGroup,
-                cameraGroupColor
+                horizonLevelingEnabled
         );
     }
 
@@ -267,9 +251,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
                 externalRigVisible,
                 maxExtensionDistance,
                 cameraNameAlwaysVisible,
-                horizonLevelingEnabled,
-                cameraGroup,
-                cameraGroupColor
+                horizonLevelingEnabled
         );
     }
 
@@ -290,9 +272,7 @@ public final class ActionCameraBlockEntity extends BlockEntity {
             boolean externalRigVisible,
             double maxExtensionDistance,
             boolean cameraNameAlwaysVisible,
-            boolean horizonLevelingEnabled,
-            String cameraGroup,
-            int cameraGroupColor
+            boolean horizonLevelingEnabled
     ) {
         this.offsetX = Mth.clamp(offsetX, -0.5D, 0.5D);
         this.offsetY = Mth.clamp(offsetY, -0.5D, 0.5D);
@@ -306,8 +286,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         this.smoothing = Mth.clamp(smoothing, 0.0F, 0.95F);
 
         this.cameraName = sanitizeCameraName(cameraName);
-        this.cameraGroup = sanitizeCameraGroup(cameraGroup);
-        this.cameraGroupColor = sanitizeGroupColor(cameraGroupColor);
         this.extensionEnabled = extensionEnabled;
         this.externalRigVisible = externalRigVisible;
         this.maxExtensionDistance = clampMaxExtensionDistance(maxExtensionDistance);
@@ -366,24 +344,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         return offset.scale(clampedMaxDistance / length);
     }
 
-    public static String sanitizeCameraGroup(String group) {
-        if (group == null || group.isBlank()) {
-            return "";
-        }
-
-        String trimmed = group.trim();
-
-        if (trimmed.length() > MAX_CAMERA_GROUP_LENGTH) {
-            return trimmed.substring(0, MAX_CAMERA_GROUP_LENGTH);
-        }
-
-        return trimmed;
-    }
-
-    public static int sanitizeGroupColor(int color) {
-        return color & 0x00FFFFFF;
-    }
-
     private static String sanitizeCameraName(String name) {
         if (name == null || name.isBlank()) {
             return "Action Camera";
@@ -414,8 +374,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         tag.putFloat("Smoothing", smoothing);
 
         tag.putString("CameraName", cameraName);
-        tag.putString("CameraGroup", cameraGroup);
-        tag.putInt("CameraGroupColor", cameraGroupColor);
 
         tag.putBoolean("ExtensionEnabled", extensionEnabled);
         tag.putDouble("ExtensionX", extensionX);
@@ -448,13 +406,6 @@ public final class ActionCameraBlockEntity extends BlockEntity {
         } else {
             cameraName = "Action Camera";
         }
-
-        cameraGroup = tag.contains("CameraGroup")
-                ? sanitizeCameraGroup(tag.getString("CameraGroup"))
-                : "";
-        cameraGroupColor = tag.contains("CameraGroupColor")
-                ? sanitizeGroupColor(tag.getInt("CameraGroupColor"))
-                : DEFAULT_GROUP_COLOR;
 
         extensionEnabled = tag.getBoolean("ExtensionEnabled");
 

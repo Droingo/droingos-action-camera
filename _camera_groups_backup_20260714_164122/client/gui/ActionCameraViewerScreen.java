@@ -1,0 +1,1406 @@
+package net.droingo.actioncamera.client.gui;
+
+import net.droingo.actioncamera.client.ActionCameraClientState;
+import net.droingo.actioncamera.client.ClientGameEvents;
+import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Compact, transparent and non-pausing camera viewer.
+ *
+ * Expanded:
+ * - camera search
+ * - distance/alphabetical sorting
+ * - camera selection list
+ *
+ * Collapsed:
+ * - thin bar showing the active camera
+ * - click the arrow to expand
+ *
+ * Selecting a camera automatically collapses the dropdown.
+ */
+public final class ActionCameraViewerScreen extends Screen {
+    private static final int PANEL_MARGIN = 8;
+    private static final int PANEL_WIDTH = 255;
+    private static final int MIN_PANEL_WIDTH = 205;
+
+    private static final int HEADER_HEIGHT = 28;
+    private static final int INNER_PADDING = 7;
+
+    private static final int WIDGET_HEIGHT = 20;
+    private static final int WIDGET_GAP = 5;
+    private static final int SORT_BUTTON_WIDTH = 72;
+
+    private static final int ROW_HEIGHT = 22;
+    private static final int MAX_VISIBLE_ROWS = 6;
+    private static final int FOOTER_HEIGHT = 4;
+
+    private static final int CAMERA_REFRESH_INTERVAL = 10;
+
+    private final List<CameraEntry> entries = new ArrayList<>();
+
+    private EditBox searchBox;
+    private Button sortButton;
+    private Button dropdownButton;
+
+    private SortMode sortMode = SortMode.DISTANCE;
+
+    private BlockPos selectedCameraPos;
+
+    private int scrollRows;
+    private int refreshTicks;
+
+    private boolean expanded = true;
+    private boolean memoryRestored;
+    private boolean initialCameraChosen;
+    private boolean everViewedCamera;
+    private boolean closing;
+
+    private ActionCameraViewerMemory.Snapshot rememberedState =
+            new ActionCameraViewerMemory.Snapshot(
+                    null,
+                    null,
+                    0
+            );
+
+    private ActionCameraViewerScreen() {
+        super(Component.literal("Camera Viewer"));
+    }
+
+    public static void open() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (
+                minecraft.player == null
+                        || minecraft.level == null
+        ) {
+            return;
+        }
+
+        if (minecraft.screen instanceof ActionCameraViewerScreen) {
+            return;
+        }
+
+        minecraft.setScreen(
+                new ActionCameraViewerScreen()
+        );
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+
+        int panelRight = getPanelRight();
+
+        int controlsWidth =
+                getPanelWidth()
+                        - INNER_PADDING * 2;
+
+        int searchWidth = Math.max(
+                70,
+                controlsWidth
+                        - SORT_BUTTON_WIDTH
+                        - WIDGET_GAP
+        );
+
+        int widgetX =
+                PANEL_MARGIN + INNER_PADDING;
+
+        int widgetY =
+                PANEL_MARGIN
+                        + HEADER_HEIGHT
+                        + 5;
+
+        this.searchBox = this.addRenderableWidget(
+                new EditBox(
+                        this.font,
+                        widgetX,
+                        widgetY,
+                        searchWidth,
+                        WIDGET_HEIGHT,
+                        Component.literal("Search cameras")
+                )
+        );
+
+        this.searchBox.setHint(
+                Component.literal("Search...")
+        );
+
+        this.searchBox.setMaxLength(64);
+
+        this.searchBox.setResponder(
+                ignored -> {
+                    this.scrollRows = 0;
+                    rebuildCameraEntries();
+                }
+        );
+
+        this.sortButton = this.addRenderableWidget(
+                Button.builder(
+                        sortButtonLabel(),
+                        button -> {
+                            this.sortMode = this.sortMode.next();
+
+                            button.setMessage(
+                                    sortButtonLabel()
+                            );
+
+                            this.scrollRows = 0;
+                            rebuildCameraEntries();
+                        }
+                ).bounds(
+                        widgetX
+                                + searchWidth
+                                + WIDGET_GAP,
+                        widgetY,
+                        SORT_BUTTON_WIDTH,
+                        WIDGET_HEIGHT
+                ).build()
+        );
+
+        this.dropdownButton = this.addRenderableWidget(
+                Button.builder(
+                        Component.literal("ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â²"),
+                        button -> setExpanded(!this.expanded)
+                ).bounds(
+                        panelRight - 25,
+                        PANEL_MARGIN + 4,
+                        21,
+                        20
+                ).build()
+        );
+
+        /*
+         * Exit button remains in the top-right corner of the screen.
+         */
+        this.addRenderableWidget(
+                Button.builder(
+                        Component.literal("X"),
+                        button -> exitViewer()
+                ).bounds(
+                        this.width - 28,
+                        8,
+                        20,
+                        20
+                ).build()
+        );
+
+        if (!this.memoryRestored) {
+            this.rememberedState =
+                    ActionCameraViewerMemory.getSnapshot(
+                            Minecraft.getInstance()
+                    );
+
+            this.selectedCameraPos =
+                    immutableOrNull(
+                            this.rememberedState.lastSelectedCamera()
+                    );
+
+            this.scrollRows = Math.max(
+                    0,
+                    this.rememberedState.scrollRows()
+            );
+
+            this.memoryRestored = true;
+        }
+
+        rebuildCameraEntries();
+
+        if (!this.initialCameraChosen) {
+            chooseInitialCamera();
+            this.initialCameraChosen = true;
+        }
+
+        updateWidgetVisibility();
+    }
+
+    private void setExpanded(boolean expanded) {
+        this.expanded = expanded;
+
+        if (expanded) {
+            rebuildCameraEntries();
+            ensureSelectedCameraVisible();
+        }
+
+        updateWidgetVisibility();
+    }
+
+    private void updateWidgetVisibility() {
+        if (
+                this.searchBox == null
+                        || this.sortButton == null
+                        || this.dropdownButton == null
+        ) {
+            return;
+        }
+
+        this.searchBox.visible = this.expanded;
+        this.searchBox.active = this.expanded;
+
+        this.sortButton.visible = this.expanded;
+        this.sortButton.active = this.expanded;
+
+        this.dropdownButton.setMessage(
+                Component.literal(
+                        this.expanded
+                                ? "V"
+                                : ">"
+                )
+        );
+
+        if (!this.expanded) {
+            this.searchBox.setFocused(false);
+            this.setFocused(null);
+        }
+    }
+
+    /**
+     * Initial camera priority:
+     *
+     * 1. Camera already being viewed
+     * 2. Last viewed camera
+     * 3. Camera currently under the crosshair
+     * 4. Closest available camera
+     */
+    private void chooseInitialCamera() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (
+                minecraft.player == null
+                        || minecraft.level == null
+        ) {
+            return;
+        }
+
+        BlockPos target = null;
+
+        BlockPos active =
+                ActionCameraClientState.getActiveCameraPos();
+
+        if (isAvailableCamera(active)) {
+            target = active;
+        }
+
+        if (
+                target == null
+                        && isAvailableCamera(
+                        this.rememberedState.lastViewedCamera()
+                )
+        ) {
+            target =
+                    this.rememberedState
+                            .lastViewedCamera()
+                            .immutable();
+        }
+
+        if (target == null) {
+            BlockPos lookedAt =
+                    ClientGameEvents.getLookedAtCameraPos(
+                            minecraft
+                    );
+
+            if (isAvailableCamera(lookedAt)) {
+                target = lookedAt;
+            }
+        }
+
+        if (
+                target == null
+                        && !this.entries.isEmpty()
+        ) {
+            target =
+                    this.entries
+                            .get(0)
+                            .position();
+        }
+
+        if (target == null) {
+            return;
+        }
+
+        startViewingWithoutChangingUiSelection(target);
+
+        if (!isAvailableCamera(this.selectedCameraPos)) {
+            this.selectedCameraPos = target.immutable();
+
+            ActionCameraViewerMemory.rememberSelectedCamera(
+                    minecraft,
+                    this.selectedCameraPos
+            );
+        }
+    }
+
+    private void startViewingWithoutChangingUiSelection(
+            BlockPos position
+    ) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (
+                minecraft.level == null
+                        || position == null
+        ) {
+            return;
+        }
+
+        BlockEntity blockEntity =
+                minecraft.level.getBlockEntity(position);
+
+        if (!(blockEntity instanceof ActionCameraBlockEntity camera)) {
+            return;
+        }
+
+        ActionCameraClientState.startViewing(
+                position,
+                camera.getCameraName()
+        );
+
+        this.everViewedCamera = true;
+
+        ActionCameraViewerMemory.rememberViewedCamera(
+                minecraft,
+                position
+        );
+    }
+
+    private void selectCamera(BlockPos position) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (
+                minecraft.level == null
+                        || position == null
+        ) {
+            return;
+        }
+
+        BlockEntity blockEntity =
+                minecraft.level.getBlockEntity(position);
+
+        if (!(blockEntity instanceof ActionCameraBlockEntity camera)) {
+            return;
+        }
+
+        this.selectedCameraPos = position.immutable();
+
+        ActionCameraClientState.startViewing(
+                this.selectedCameraPos,
+                camera.getCameraName()
+        );
+
+        this.everViewedCamera = true;
+
+        ActionCameraViewerMemory.rememberViewedCamera(
+                minecraft,
+                this.selectedCameraPos
+        );
+
+        ActionCameraViewerMemory.rememberSelectedCamera(
+                minecraft,
+                this.selectedCameraPos
+        );
+
+        /*
+         * Keep the dropdown exactly as the player left it.
+         * Only the arrow button controls expanded/collapsed state.
+         */
+    }
+
+    private void rebuildCameraEntries() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        this.entries.clear();
+
+        if (
+                minecraft.player == null
+                        || minecraft.level == null
+        ) {
+            this.scrollRows = 0;
+            return;
+        }
+
+        String filter =
+                this.searchBox == null
+                        ? ""
+                        : this.searchBox
+                        .getValue()
+                        .trim()
+                        .toLowerCase(Locale.ROOT);
+
+        for (
+                Object value :
+                ClientGameEvents.collectKnownCameraPositions(
+                        minecraft
+                )
+        ) {
+            if (!(value instanceof BlockPos position)) {
+                continue;
+            }
+
+            BlockEntity blockEntity =
+                    minecraft.level.getBlockEntity(position);
+
+            if (!(blockEntity instanceof ActionCameraBlockEntity camera)) {
+                continue;
+            }
+
+            String cameraName =
+                    normalizedCameraName(
+                            camera.getCameraName()
+                    );
+
+            if (
+                    !filter.isEmpty()
+                            && !cameraName
+                            .toLowerCase(Locale.ROOT)
+                            .contains(filter)
+            ) {
+                continue;
+            }
+
+            this.entries.add(
+                    new CameraEntry(
+                            position.immutable(),
+                            cameraName
+                    )
+            );
+        }
+
+        /*
+         * Distance mode retains the existing Sable-aware ordering
+         * from ClientGameEvents.
+         */
+        if (this.sortMode == SortMode.ALPHABETICAL) {
+            this.entries.sort(
+                    Comparator
+                            .comparing(
+                                    CameraEntry::name,
+                                    String.CASE_INSENSITIVE_ORDER
+                            )
+                            .thenComparingLong(
+                                    entry ->
+                                            entry.position().asLong()
+                            )
+            );
+        }
+
+        clampScrollRows();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+
+        if (this.closing) {
+            return;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (
+                minecraft.player == null
+                        || minecraft.level == null
+        ) {
+            closeScreenOnly();
+            return;
+        }
+
+        if (
+                this.everViewedCamera
+                        && !ActionCameraClientState.isViewingCamera()
+        ) {
+            closeScreenOnly();
+            return;
+        }
+
+        this.refreshTicks++;
+
+        if (
+                this.refreshTicks
+                        >= CAMERA_REFRESH_INTERVAL
+        ) {
+            this.refreshTicks = 0;
+            rebuildCameraEntries();
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
+        /*
+         * Buttons and the search field get first access.
+         */
+        if (super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
+
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            return false;
+        }
+
+
+        if (
+                !this.expanded
+                        || !isInsideCameraList(
+                        mouseX,
+                        mouseY
+                )
+        ) {
+            return false;
+        }
+
+        int localRow =
+                (int) (
+                        (mouseY - getListTop())
+                                / ROW_HEIGHT
+                );
+
+        int entryIndex =
+                this.scrollRows + localRow;
+
+        if (
+                entryIndex < 0
+                        || entryIndex >= this.entries.size()
+        ) {
+            return false;
+        }
+
+        CameraEntry entry =
+                this.entries.get(entryIndex);
+
+        selectCamera(entry.position());
+
+        return true;
+    }
+
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double horizontalAmount,
+            double verticalAmount
+    ) {
+        if (
+                this.expanded
+                        && isInsideCameraList(mouseX, mouseY)
+                        && this.entries.size()
+                        > getVisibleRowCount()
+        ) {
+            int direction =
+                    (int) Math.signum(verticalAmount);
+
+            if (direction != 0) {
+                this.scrollRows -= direction;
+                clampScrollRows();
+
+                ActionCameraViewerMemory.rememberScrollRows(
+                        Minecraft.getInstance(),
+                        this.scrollRows
+                );
+            }
+
+            return true;
+        }
+
+        return super.mouseScrolled(
+                mouseX,
+                mouseY,
+                horizontalAmount,
+                verticalAmount
+        );
+    }
+
+    @Override
+    public boolean keyPressed(
+            int keyCode,
+            int scanCode,
+            int modifiers
+    ) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            exitViewer();
+            return true;
+        }
+
+        /*
+         * Shift remains a quick exit, unless the player is currently
+         * typing into the camera search field.
+         */
+        boolean typingSearch =
+                this.searchBox != null
+                        && this.searchBox.isFocused();
+
+        if (
+                !typingSearch
+                        && (
+                        keyCode == GLFW.GLFW_KEY_LEFT_SHIFT
+                                || keyCode == GLFW.GLFW_KEY_RIGHT_SHIFT
+                )
+        ) {
+            exitViewer();
+            return true;
+        }
+
+        return super.keyPressed(
+                keyCode,
+                scanCode,
+                modifiers
+        );
+    }
+
+    @Override
+    public void onClose() {
+        exitViewer();
+    }
+
+    @Override
+    public void removed() {
+        rememberCurrentState();
+
+        if (
+                !this.closing
+                        && ActionCameraClientState.isViewingCamera()
+        ) {
+            ActionCameraClientState.stopViewing();
+        }
+
+        super.removed();
+    }
+
+    private void exitViewer() {
+        if (this.closing) {
+            return;
+        }
+
+        this.closing = true;
+
+        rememberCurrentState();
+
+        if (ActionCameraClientState.isViewingCamera()) {
+            ActionCameraClientState.stopViewing();
+        }
+
+        Minecraft.getInstance().setScreen(null);
+    }
+
+    private void closeScreenOnly() {
+        if (this.closing) {
+            return;
+        }
+
+        this.closing = true;
+
+        rememberCurrentState();
+
+        Minecraft.getInstance().setScreen(null);
+    }
+
+    private void rememberCurrentState() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        BlockPos active =
+                ActionCameraClientState.getActiveCameraPos();
+
+        if (active != null) {
+            ActionCameraViewerMemory.rememberViewedCamera(
+                    minecraft,
+                    active
+            );
+        }
+
+        if (this.selectedCameraPos != null) {
+            ActionCameraViewerMemory.rememberSelectedCamera(
+                    minecraft,
+                    this.selectedCameraPos
+            );
+        }
+
+        ActionCameraViewerMemory.rememberScrollRows(
+                minecraft,
+                this.scrollRows
+        );
+    }
+
+    /**
+     * Prevents Minecraft from dimming or blurring the live camera feed.
+     */
+    @Override
+    public void renderBackground(
+            GuiGraphics guiGraphics,
+            int mouseX,
+            int mouseY,
+            float partialTick
+    ) {
+        // Intentionally empty.
+    }
+
+    @Override
+    public void render(
+            GuiGraphics guiGraphics,
+            int mouseX,
+            int mouseY,
+            float partialTick
+    ) {
+        int panelLeft = PANEL_MARGIN;
+        int panelTop = PANEL_MARGIN;
+        int panelRight = getPanelRight();
+
+        int panelBottom =
+                this.expanded
+                        ? getExpandedPanelBottom()
+                        : panelTop + HEADER_HEIGHT;
+
+        /*
+         * Compact panel background.
+         */
+        guiGraphics.fill(
+                panelLeft,
+                panelTop,
+                panelRight,
+                panelBottom,
+                0xC8000000
+        );
+
+        /*
+         * Border.
+         */
+        guiGraphics.fill(
+                panelLeft,
+                panelTop,
+                panelRight,
+                panelTop + 1,
+                0xFF777777
+        );
+
+        guiGraphics.fill(
+                panelLeft,
+                panelBottom - 1,
+                panelRight,
+                panelBottom,
+                0xFF202020
+        );
+
+        guiGraphics.fill(
+                panelLeft,
+                panelTop,
+                panelLeft + 1,
+                panelBottom,
+                0xFF777777
+        );
+
+        guiGraphics.fill(
+                panelRight - 1,
+                panelTop,
+                panelRight,
+                panelBottom,
+                0xFF202020
+        );
+
+        /*
+         * Blue accent.
+         */
+        guiGraphics.fill(
+                panelLeft + 1,
+                panelTop + 1,
+                panelLeft + 4,
+                panelBottom - 1,
+                0xFF4E91B8
+        );
+
+        String header =
+                "CAMERAS "
+                        + this.entries.size()
+                        + " | "
+                        + getCurrentCameraName();
+
+        guiGraphics.drawString(
+                this.font,
+                trimToWidth(
+                        header,
+                        getPanelWidth() - 42
+                ),
+                panelLeft + INNER_PADDING,
+                panelTop + 10,
+                0xFFFFFFFF,
+                false
+        );
+
+        if (this.expanded) {
+            renderCameraList(
+                    guiGraphics,
+                    mouseX,
+                    mouseY
+            );
+}
+
+        super.render(
+                guiGraphics,
+                mouseX,
+                mouseY,
+                partialTick
+        );
+    }
+
+    private void renderCameraList(
+            GuiGraphics guiGraphics,
+            int mouseX,
+            int mouseY
+    ) {
+        int listLeft =
+                PANEL_MARGIN + INNER_PADDING;
+
+        int listRight =
+                getPanelRight() - INNER_PADDING;
+
+        int listTop = getListTop();
+        int listBottom = getListBottom();
+
+        guiGraphics.fill(
+                listLeft,
+                listTop,
+                listRight,
+                listBottom,
+                0x780B0B0B
+        );
+
+        if (this.entries.isEmpty()) {
+            String message =
+                    this.searchBox != null
+                            && !this.searchBox
+                            .getValue()
+                            .isBlank()
+                            ? "No matching cameras"
+                            : "No loaded cameras";
+
+            guiGraphics.drawCenteredString(
+                    this.font,
+                    message,
+                    (listLeft + listRight) / 2,
+                    listTop + 8,
+                    0xFFAAAAAA
+            );
+
+            return;
+        }
+
+        BlockPos activeCamera =
+                ActionCameraClientState.getActiveCameraPos();
+
+        int visibleRows = getVisibleRowCount();
+
+        int lastIndex = Math.min(
+                this.entries.size(),
+                this.scrollRows + visibleRows
+        );
+
+        guiGraphics.enableScissor(
+                listLeft,
+                listTop,
+                listRight,
+                listBottom
+        );
+
+        for (
+                int index = this.scrollRows;
+                index < lastIndex;
+                index++
+        ) {
+            CameraEntry entry =
+                    this.entries.get(index);
+
+            int visibleIndex =
+                    index - this.scrollRows;
+
+            int rowTop =
+                    listTop
+                            + visibleIndex
+                            * ROW_HEIGHT;
+
+            int rowBottom =
+                    rowTop + ROW_HEIGHT - 1;
+
+            boolean current =
+                    activeCamera != null
+                            && activeCamera.equals(
+                            entry.position()
+                    );
+
+            boolean selected =
+                    this.selectedCameraPos != null
+                            && this.selectedCameraPos.equals(
+                            entry.position()
+                    );
+
+            boolean hovered =
+                    mouseX >= listLeft
+                            && mouseX < listRight
+                            && mouseY >= rowTop
+                            && mouseY < rowBottom;
+
+            int backgroundColor;
+
+            if (current) {
+                backgroundColor = 0xD0447391;
+            }
+            else if (selected) {
+                backgroundColor = 0xB0334652;
+            }
+            else if (hovered) {
+                backgroundColor = 0xA0383838;
+            }
+            else {
+                backgroundColor = 0x70202020;
+            }
+
+            guiGraphics.fill(
+                    listLeft + 1,
+                    rowTop + 1,
+                    listRight - 1,
+                    rowBottom,
+                    backgroundColor
+            );
+
+            if (current) {
+                guiGraphics.fill(
+                        listLeft + 1,
+                        rowTop + 1,
+                        listLeft + 4,
+                        rowBottom,
+                        0xFF8BD8FF
+                );
+            }
+            else if (selected) {
+                guiGraphics.fill(
+                        listLeft + 1,
+                        rowTop + 1,
+                        listLeft + 3,
+                        rowBottom,
+                        0xFF68A7CA
+                );
+            }
+
+            String status =
+                    current
+                            ? "LIVE"
+                            : "";
+
+            int statusWidth =
+                    status.isEmpty()
+                            ? 0
+                            : this.font.width(status);
+
+            int nameWidth =
+                    listRight
+                            - listLeft
+                            - 16
+                            - (
+                            status.isEmpty()
+                                    ? 0
+                                    : statusWidth + 8
+                    );
+
+            guiGraphics.drawString(
+                    this.font,
+                    trimToWidth(
+                            entry.name(),
+                            nameWidth
+                    ),
+                    listLeft + 7,
+                    rowTop + 3,
+                    current
+                            ? 0xFFFFFFFF
+                            : 0xFFE1E1E1,
+                    false
+            );
+
+            if (!status.isEmpty()) {
+                guiGraphics.drawString(
+                        this.font,
+                        status,
+                        listRight
+                                - statusWidth
+                                - 5,
+                        rowTop + 3,
+                        0xFFB8E8FF,
+                        false
+                );
+            }
+
+            String coordinates =
+                    entry.position().getX()
+                            + ", "
+                            + entry.position().getY()
+                            + ", "
+                            + entry.position().getZ();
+
+            guiGraphics.drawString(
+                    this.font,
+                    coordinates,
+                    listLeft + 7,
+                    rowTop + 13,
+                    current
+                            ? 0xFFC5E9FF
+                            : 0xFF999999,
+                    false
+            );
+        }
+
+        guiGraphics.disableScissor();
+
+        renderScrollbar(
+                guiGraphics,
+                listRight,
+                listTop,
+                listBottom
+        );
+    }
+
+    private void renderScrollbar(
+            GuiGraphics guiGraphics,
+            int listRight,
+            int listTop,
+            int listBottom
+    ) {
+        int visibleRows = getVisibleRowCount();
+
+        if (this.entries.size() <= visibleRows) {
+            return;
+        }
+
+        int trackHeight =
+                listBottom - listTop;
+
+        int thumbHeight = Math.max(
+                14,
+                trackHeight
+                        * visibleRows
+                        / this.entries.size()
+        );
+
+        int maxScrollRows = Math.max(
+                1,
+                this.entries.size() - visibleRows
+        );
+
+        int availableTravel =
+                trackHeight - thumbHeight;
+
+        int thumbOffset =
+                availableTravel
+                        * this.scrollRows
+                        / maxScrollRows;
+
+        guiGraphics.fill(
+                listRight - 3,
+                listTop,
+                listRight,
+                listBottom,
+                0x80000000
+        );
+
+        guiGraphics.fill(
+                listRight - 3,
+                listTop + thumbOffset,
+                listRight,
+                listTop + thumbOffset + thumbHeight,
+                0xFF8A8A8A
+        );
+    }
+
+    private String getCurrentCameraName() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.level == null) {
+            return "No camera";
+        }
+
+        BlockPos active =
+                ActionCameraClientState.getActiveCameraPos();
+
+        if (active == null) {
+            return "No camera";
+        }
+
+        BlockEntity blockEntity =
+                minecraft.level.getBlockEntity(active);
+
+        if (blockEntity instanceof ActionCameraBlockEntity camera) {
+            return normalizedCameraName(
+                    camera.getCameraName()
+            );
+        }
+
+        return "No camera";
+    }
+
+    private boolean isInsideHeader(
+            double mouseX,
+            double mouseY
+    ) {
+        return mouseX >= PANEL_MARGIN
+                && mouseX < getPanelRight()
+                && mouseY >= PANEL_MARGIN
+                && mouseY < PANEL_MARGIN + HEADER_HEIGHT;
+    }
+
+    private boolean isInsideCameraList(
+            double mouseX,
+            double mouseY
+    ) {
+        return mouseX
+                >= PANEL_MARGIN + INNER_PADDING
+                && mouseX
+                < getPanelRight() - INNER_PADDING
+                && mouseY
+                >= getListTop()
+                && mouseY
+                < getListBottom();
+    }
+
+    private void ensureSelectedCameraVisible() {
+        if (this.selectedCameraPos == null) {
+            return;
+        }
+
+        int selectedIndex = -1;
+
+        for (
+                int index = 0;
+                index < this.entries.size();
+                index++
+        ) {
+            if (
+                    this.entries
+                            .get(index)
+                            .position()
+                            .equals(this.selectedCameraPos)
+            ) {
+                selectedIndex = index;
+                break;
+            }
+        }
+
+        if (selectedIndex < 0) {
+            return;
+        }
+
+        int visibleRows = getVisibleRowCount();
+
+        if (selectedIndex < this.scrollRows) {
+            this.scrollRows = selectedIndex;
+        }
+        else if (
+                selectedIndex
+                        >= this.scrollRows
+                        + visibleRows
+        ) {
+            this.scrollRows =
+                    selectedIndex
+                            - visibleRows
+                            + 1;
+        }
+
+        clampScrollRows();
+    }
+
+    private boolean isAvailableCamera(BlockPos position) {
+        if (position == null) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.level == null) {
+            return false;
+        }
+
+        return minecraft.level.getBlockEntity(position)
+                instanceof ActionCameraBlockEntity;
+    }
+
+    private void clampScrollRows() {
+        int maxScroll = Math.max(
+                0,
+                this.entries.size()
+                        - getVisibleRowCount()
+        );
+
+        this.scrollRows = Math.max(
+                0,
+                Math.min(
+                        this.scrollRows,
+                        maxScroll
+                )
+        );
+    }
+
+    private int getPanelWidth() {
+        return Math.max(
+                MIN_PANEL_WIDTH,
+                Math.min(
+                        PANEL_WIDTH,
+                        this.width - 44
+                )
+        );
+    }
+
+    private int getPanelRight() {
+        return PANEL_MARGIN + getPanelWidth();
+    }
+
+    private int getSearchTop() {
+        return PANEL_MARGIN
+                + HEADER_HEIGHT
+                + 5;
+    }
+
+    private int getListTop() {
+        return getSearchTop()
+                + WIDGET_HEIGHT
+                + 5;
+    }
+
+    private int getVisibleRowCount() {
+        int desiredRows = Math.max(
+                1,
+                Math.min(
+                        MAX_VISIBLE_ROWS,
+                        this.entries.size()
+                )
+        );
+
+        int availableHeight =
+                this.height
+                        - PANEL_MARGIN
+                        - getListTop()
+                        - FOOTER_HEIGHT
+                        - 4;
+
+        int rowsAllowedByScreen = Math.max(
+                1,
+                availableHeight / ROW_HEIGHT
+        );
+
+        return Math.min(
+                desiredRows,
+                rowsAllowedByScreen
+        );
+    }
+
+    private int getListBottom() {
+        return getListTop()
+                + getVisibleRowCount()
+                * ROW_HEIGHT;
+    }
+
+    private int getExpandedPanelBottom() {
+        return getListBottom()
+                + FOOTER_HEIGHT;
+    }
+
+    private Component sortButtonLabel() {
+        return Component.literal(
+                this.sortMode == SortMode.DISTANCE
+                        ? "Distance"
+                        : "A-Z"
+        );
+    }
+
+    private String trimToWidth(
+            String text,
+            int maxWidth
+    ) {
+        if (
+                text == null
+                        || text.isEmpty()
+                        || maxWidth <= 0
+        ) {
+            return "";
+        }
+
+        if (this.font.width(text) <= maxWidth) {
+            return text;
+        }
+
+        String ellipsis = "...";
+
+        int ellipsisWidth =
+                this.font.width(ellipsis);
+
+        if (ellipsisWidth > maxWidth) {
+            return "";
+        }
+
+        String trimmed = text;
+
+        while (
+                !trimmed.isEmpty()
+                        && this.font.width(trimmed)
+                        + ellipsisWidth
+                        > maxWidth
+        ) {
+            trimmed = trimmed.substring(
+                    0,
+                    trimmed.length() - 1
+            );
+        }
+
+        return trimmed + ellipsis;
+    }
+
+    private static String normalizedCameraName(
+            String cameraName
+    ) {
+        if (
+                cameraName == null
+                        || cameraName.isBlank()
+        ) {
+            return "Action Camera";
+        }
+
+        return cameraName.trim();
+    }
+
+    private static BlockPos immutableOrNull(
+            BlockPos position
+    ) {
+        return position == null
+                ? null
+                : position.immutable();
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    private enum SortMode {
+        DISTANCE,
+        ALPHABETICAL;
+
+        private SortMode next() {
+            return this == DISTANCE
+                    ? ALPHABETICAL
+                    : DISTANCE;
+        }
+    }
+
+    private record CameraEntry(
+            BlockPos position,
+            String name
+    ) {
+    }
+}

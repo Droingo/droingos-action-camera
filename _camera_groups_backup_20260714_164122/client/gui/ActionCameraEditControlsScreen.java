@@ -51,7 +51,7 @@ public final class ActionCameraEditControlsScreen extends Screen {
         int y = panelY + 38;
 
         this.addRenderableWidget(Button.builder(
-                Component.literal("Name / Group"),
+                Component.literal("Rename"),
                 button -> {
                     ActionCameraClientState.setEditControlsOpen(false);
                     Minecraft.getInstance().setScreen(new ActionCameraRenameScreen());

@@ -1,0 +1,98 @@
+package net.droingo.actioncamera.client.gui;
+
+import net.droingo.actioncamera.client.ActionCameraClientState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
+
+public final class ActionCameraRenameScreen extends Screen {
+    private static final int MAX_NAME_LENGTH = 32;
+    private static final int MAX_GROUP_LENGTH = 24;
+    private static final int[] COLORS = {
+            0x4E91B8, 0x5AA469, 0xC98B3C, 0xB85C5C,
+            0x8B6DB8, 0x3FA7A3, 0xB89A4E, 0x7F8C8D
+    };
+
+    private EditBox nameBox;
+    private EditBox groupBox;
+    private int colorIndex;
+
+    public ActionCameraRenameScreen() {
+        super(Component.literal("Camera Identity"));
+    }
+
+    public static void open() {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (!ActionCameraClientState.isEditingCamera()) {
+            return;
+        }
+
+        minecraft.setScreen(new ActionCameraRenameScreen());
+    }
+
+    @Override
+    protected void init() {
+        int panelWidth = 260;
+        int x = (this.width - panelWidth) / 2;
+        int y = (this.height / 2) - 48;
+
+        this.nameBox = new EditBox(this.font, x, y, panelWidth, 20, Component.literal("Camera name"));
+        this.nameBox.setMaxLength(MAX_NAME_LENGTH);
+        this.nameBox.setValue(ActionCameraClientState.getEditingCameraNameForRenameScreen());
+        this.addRenderableWidget(this.nameBox);
+
+        this.groupBox = new EditBox(this.font, x, y + 28, 190, 20, Component.literal("Camera group"));
+        this.groupBox.setMaxLength(MAX_GROUP_LENGTH);
+        this.groupBox.setValue(ActionCameraClientState.getEditingCameraGroupForScreen());
+        this.groupBox.setHint(Component.literal("Group (blank = Ungrouped)"));
+        this.addRenderableWidget(this.groupBox);
+
+        int current = ActionCameraClientState.getEditingCameraGroupColorForScreen() & 0xFFFFFF;
+        for (int i = 0; i < COLORS.length; i++) if (COLORS[i] == current) colorIndex = i;
+
+        this.addRenderableWidget(Button.builder(Component.literal("Colour"), b -> {
+            colorIndex = (colorIndex + 1) % COLORS.length;
+        }).bounds(x + 198, y + 28, 62, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("Done"), b -> finish())
+                .bounds(x, y + 58, 126, 20).build());
+        this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> close())
+                .bounds(x + 134, y + 58, 126, 20).build());
+
+        this.nameBox.setFocused(true);
+        this.setInitialFocus(this.nameBox);
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        g.fill(0, 0, width, height, 0x88000000);
+        int panelX = (width - 280) / 2;
+        int panelY = (height - 126) / 2;
+        g.fill(panelX, panelY, panelX + 280, panelY + 126, 0xCC000000);
+        g.drawCenteredString(font, title, width / 2, panelY + 9, 0xFFFFFF);
+        g.fill(panelX + 212, panelY + 55, panelX + 258, panelY + 69, 0xFF000000 | COLORS[colorIndex]);
+        super.render(g, mouseX, mouseY, partialTick);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) { finish(); return true; }
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) { close(); return true; }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private void finish() {
+        ActionCameraClientState.updateEditingCameraIdentity(
+                nameBox.getValue(), groupBox.getValue(), COLORS[colorIndex]);
+        close();
+    }
+
+    private void close() { Minecraft.getInstance().setScreen(null); }
+
+    @Override public boolean isPauseScreen() { return false; }
+}

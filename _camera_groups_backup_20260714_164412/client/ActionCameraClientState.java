@@ -45,8 +45,6 @@ public final class ActionCameraClientState {
     private static float editSmoothing;
 
     private static String editCameraName = "Action Camera";
-    private static String editCameraGroup = "";
-    private static int editCameraGroupColor = ActionCameraBlockEntity.DEFAULT_GROUP_COLOR;
 
     private static boolean editExtensionEnabled;
     private static double editExtensionX;
@@ -234,8 +232,6 @@ public final class ActionCameraClientState {
         editSmoothing = camera.getSmoothing();
 
         editCameraName = camera.getCameraName();
-        editCameraGroup = camera.getCameraGroup();
-        editCameraGroupColor = camera.getCameraGroupColor();
 
         editExtensionEnabled = camera.isExtensionEnabled();
         editExtensionX = camera.getExtensionX();
@@ -638,9 +634,7 @@ public final class ActionCameraClientState {
                     editExternalRigVisible,
                     editMaxExtensionDistance,
                     editCameraNameAlwaysVisible,
-                    editHorizonLevelingEnabled,
-                    editCameraGroup,
-                    editCameraGroupColor
+                    editHorizonLevelingEnabled
             );
         }
     }
@@ -668,9 +662,7 @@ public final class ActionCameraClientState {
                 editExternalRigVisible,
                 editMaxExtensionDistance,
                 editCameraNameAlwaysVisible,
-                editHorizonLevelingEnabled,
-                editCameraGroup,
-                editCameraGroupColor
+                editHorizonLevelingEnabled
         ));
 
         dirty = false;
@@ -702,40 +694,23 @@ public final class ActionCameraClientState {
         return editCameraName == null || editCameraName.isBlank() ? "Action Camera" : editCameraName;
     }
 
-    public static String getEditingCameraGroupForScreen() {
-        return isEditingCamera() ? editCameraGroup : "";
-    }
-
-    public static int getEditingCameraGroupColorForScreen() {
-        return isEditingCamera() ? editCameraGroupColor : ActionCameraBlockEntity.DEFAULT_GROUP_COLOR;
-    }
-
-    public static void updateEditingCameraIdentity(String newName, String newGroup, int newGroupColor) {
-        if (!isEditingCamera()) {
-            return;
-        }
-
-        editCameraName = sanitizeClientCameraName(newName);
-        editCameraGroup = ActionCameraBlockEntity.sanitizeCameraGroup(newGroup);
-        editCameraGroupColor = ActionCameraBlockEntity.sanitizeGroupColor(newGroupColor);
-        activeCameraLabel = editCameraName;
-
-        applyLiveEditToClientBlockEntity();
-        dirty = true;
-        saveCooldownTicks = 0;
-        sendUpdateToServer();
-    }
-
     public static void renameEditingCamera(String newName) {
         if (!isEditingCamera()) {
             return;
         }
 
-        updateEditingCameraIdentity(
-                newName,
-                editCameraGroup,
-                editCameraGroupColor
-        );
+        editCameraName = sanitizeClientCameraName(newName);
+        activeCameraLabel = editCameraName;
+
+        applyLiveEditToClientBlockEntity();
+        dirty = true;
+        saveCooldownTicks = 0;
+
+        /*
+         * Send immediately so the name is synced even before the normal edit tick.
+         * stopEditing(true) will send again later, which is harmless.
+         */
+        sendUpdateToServer();
     }
 
     private static String sanitizeClientCameraName(String name) {
