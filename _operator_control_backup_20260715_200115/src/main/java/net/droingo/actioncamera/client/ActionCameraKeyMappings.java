@@ -16,14 +16,6 @@ public final class ActionCameraKeyMappings {
             CATEGORY
     );
 
-    public static final KeyMapping TOGGLE_OPERATOR_CONTROL = new KeyMapping(
-            "key.droingo_action_camera.toggle_operator_control",
-            KeyConflictContext.UNIVERSAL,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_LEFT_ALT,
-            CATEGORY
-    );
-
     public static final KeyMapping RENAME_ACTION_CAMERA = new KeyMapping(
             "key.droingo_action_camera.rename_action_camera",
             KeyConflictContext.IN_GAME,

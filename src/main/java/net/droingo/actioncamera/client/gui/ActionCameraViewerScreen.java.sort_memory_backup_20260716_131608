@@ -42,7 +42,7 @@ public final class ActionCameraViewerScreen extends Screen {
     private EditBox searchBox;
     private Button sortButton;
     private Button dropdownButton;
-    private SortMode sortMode = SortMode.ALPHABETICAL;
+    private SortMode sortMode = SortMode.DISTANCE;
     private BlockPos selectedCameraPos;
     private int scrollPixels;
     private int refreshTicks;
@@ -53,7 +53,7 @@ public final class ActionCameraViewerScreen extends Screen {
     private boolean closing;
 
     private ActionCameraViewerMemory.Snapshot rememberedState =
-            new ActionCameraViewerMemory.Snapshot(null, null, 0, Set.of(), "ALPHABETICAL");
+            new ActionCameraViewerMemory.Snapshot(null, null, 0, Set.of());
 
     private ActionCameraViewerScreen() {
         super(Component.literal("Camera Viewer"));
@@ -86,12 +86,6 @@ public final class ActionCameraViewerScreen extends Screen {
         sortButton = addRenderableWidget(Button.builder(sortLabel(), button -> {
             sortMode = sortMode.next();
             button.setMessage(sortLabel());
-
-            ActionCameraViewerMemory.rememberSortMode(
-                    Minecraft.getInstance(),
-                    sortMode.name()
-            );
-
             scrollPixels = 0;
             rebuild();
         }).bounds(x + searchWidth + 5, y, 72, WIDGET_HEIGHT).build());
@@ -113,16 +107,6 @@ public final class ActionCameraViewerScreen extends Screen {
             selectedCameraPos = copy(rememberedState.lastSelectedCamera());
             scrollPixels = Math.max(0, rememberedState.scrollRows());
             expandedGroups.addAll(rememberedState.expandedGroups());
-
-            sortMode =
-                    "DISTANCE".equalsIgnoreCase(rememberedState.sortMode())
-                            ? SortMode.DISTANCE
-                            : SortMode.ALPHABETICAL;
-
-            if (sortButton != null) {
-                sortButton.setMessage(sortLabel());
-            }
-
             memoryRestored = true;
         }
 
@@ -200,7 +184,6 @@ public final class ActionCameraViewerScreen extends Screen {
         if (expandGroup) {
             expandedGroups.add(groupKey(camera.getCameraGroup()));
             ActionCameraViewerMemory.rememberExpandedGroups(minecraft, expandedGroups);
-        ActionCameraViewerMemory.rememberSortMode(minecraft, sortMode.name());
             rebuildRows();
         }
     }
@@ -393,7 +376,6 @@ public final class ActionCameraViewerScreen extends Screen {
         if (selectedCameraPos != null) ActionCameraViewerMemory.rememberSelectedCamera(minecraft, selectedCameraPos);
         ActionCameraViewerMemory.rememberScrollRows(minecraft, scrollPixels);
         ActionCameraViewerMemory.rememberExpandedGroups(minecraft, expandedGroups);
-        ActionCameraViewerMemory.rememberSortMode(minecraft, sortMode.name());
     }
 
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {}

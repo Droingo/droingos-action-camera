@@ -17,9 +17,9 @@ final class ActionCameraViewerMemory {
 
     static Snapshot getSnapshot(Minecraft minecraft) {
         MemoryState state = getState(minecraft, false);
-        if (state == null) return new Snapshot(null, null, 0, Set.of(), "ALPHABETICAL");
+        if (state == null) return new Snapshot(null, null, 0, Set.of());
         return new Snapshot(copy(state.lastViewedCamera), copy(state.lastSelectedCamera),
-                Math.max(0, state.scrollRows), Set.copyOf(state.expandedGroups), state.sortMode);
+                Math.max(0, state.scrollRows), Set.copyOf(state.expandedGroups));
     }
 
     static void rememberViewedCamera(Minecraft minecraft, BlockPos pos) {
@@ -45,19 +45,6 @@ final class ActionCameraViewerMemory {
         }
     }
 
-    static void rememberSortMode(Minecraft minecraft, String sortMode) {
-        MemoryState state = getState(minecraft, true);
-
-        if (state == null) {
-            return;
-        }
-
-        state.sortMode =
-                "DISTANCE".equalsIgnoreCase(sortMode)
-                        ? "DISTANCE"
-                        : "ALPHABETICAL";
-    }
-
     private static MemoryState getState(Minecraft minecraft, boolean create) {
         if (minecraft == null || minecraft.player == null || minecraft.level == null) return null;
         MemoryKey key = new MemoryKey(minecraft.player.getUUID(), minecraft.level.dimension().location());
@@ -67,7 +54,7 @@ final class ActionCameraViewerMemory {
     private static BlockPos copy(BlockPos pos) { return pos == null ? null : pos.immutable(); }
 
     record Snapshot(BlockPos lastViewedCamera, BlockPos lastSelectedCamera, int scrollRows,
-                    Set<String> expandedGroups, String sortMode) {}
+                    Set<String> expandedGroups) {}
 
     private record MemoryKey(UUID playerId, ResourceLocation dimension) {}
 
@@ -76,6 +63,5 @@ final class ActionCameraViewerMemory {
         private BlockPos lastSelectedCamera;
         private int scrollRows;
         private final Set<String> expandedGroups = new HashSet<>();
-        private String sortMode = "ALPHABETICAL";
     }
 }

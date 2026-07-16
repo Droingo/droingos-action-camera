@@ -63,7 +63,6 @@ public final class ActionCameraClientState {
     private static boolean dirty;
     private static int saveCooldownTicks;
     private static boolean wasShiftDown;
-    private static boolean operatorControlMode;
 
     private static ActionCameraPose smoothedPose;
     private static ActionCameraPose lastAppliedPose;
@@ -97,29 +96,6 @@ public final class ActionCameraClientState {
     public static boolean isViewingCamera() {
         return mode == Mode.VIEW && activeCameraPos != null;
     }
-
-    public static boolean isOperatorControlMode() {
-        return isViewingCamera() && operatorControlMode;
-    }
-
-    public static void setOperatorControlMode(boolean enabled) {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        if (!isViewingCamera()) {
-            operatorControlMode = false;
-            return;
-        }
-
-        operatorControlMode = enabled;
-
-        if (minecraft.player != null) {
-            minecraft.player.displayClientMessage(
-                    Component.literal(enabled ? "PLAYER CONTROL" : "CAMERA SELECTION"),
-                    true
-            );
-        }
-    }
-
 
     public static boolean isEditingCamera() {
         return mode == Mode.EDIT && activeCameraPos != null;
@@ -217,7 +193,6 @@ public final class ActionCameraClientState {
         activeCameraPos = pos.immutable();
         activeCameraLabel = label == null || label.isBlank() ? camera.getCameraName() : label;
         mode = Mode.VIEW;
-        operatorControlMode = false;
         extensionEditMode = false;
         editControlsOpen = false;
         forceVanillaSoundCameraTicks = 0;
@@ -246,7 +221,6 @@ public final class ActionCameraClientState {
         activeCameraPos = pos.immutable();
         activeCameraLabel = camera.getCameraName();
         mode = Mode.EDIT;
-        operatorControlMode = false;
 
         editOffsetX = camera.getOffsetX();
         editOffsetY = camera.getOffsetY();
@@ -289,7 +263,6 @@ public final class ActionCameraClientState {
         forceVanillaAudioForExit();
 
         mode = Mode.NONE;
-        operatorControlMode = false;
         activeCameraPos = null;
         activeCameraLabel = "Action Camera";
         extensionEditMode = false;
@@ -309,7 +282,6 @@ public final class ActionCameraClientState {
         if (activeCameraPos == null) {
             forceVanillaAudioForExit();
             mode = Mode.NONE;
-            operatorControlMode = false;
             activeCameraLabel = "Action Camera";
             extensionEditMode = false;
             editControlsOpen = false;
@@ -323,7 +295,6 @@ public final class ActionCameraClientState {
         forceVanillaAudioForExit();
 
         mode = Mode.NONE;
-        operatorControlMode = false;
         activeCameraPos = null;
         activeCameraLabel = "Action Camera";
         extensionEditMode = false;
@@ -499,7 +470,6 @@ public final class ActionCameraClientState {
         if (minecraft.level == null || activeCameraPos == null) {
             forceVanillaAudioForExit();
             mode = Mode.NONE;
-            operatorControlMode = false;
             activeCameraPos = null;
             activeCameraLabel = "Action Camera";
             extensionEditMode = false;
@@ -509,7 +479,6 @@ public final class ActionCameraClientState {
         if (!(minecraft.level.getBlockEntity(activeCameraPos) instanceof ActionCameraBlockEntity)) {
             forceVanillaAudioForExit();
             mode = Mode.NONE;
-            operatorControlMode = false;
             activeCameraPos = null;
             activeCameraLabel = "Action Camera";
             extensionEditMode = false;
@@ -523,7 +492,7 @@ public final class ActionCameraClientState {
          * While extension-pole editing is active, Shift is ignored so players do
          * not accidentally save/exit while positioning the camera head.
          */
-        if (shiftDown && !wasShiftDown && !extensionEditMode && !isEditControlsOpen() && !isOperatorControlMode()) {
+        if (shiftDown && !wasShiftDown && !extensionEditMode && !isEditControlsOpen()) {
             stopActiveCamera();
             wasShiftDown = true;
             return;
@@ -837,7 +806,6 @@ public final class ActionCameraClientState {
         if (minecraft.level == null || activeCameraPos == null) {
             forceVanillaAudioForExit();
             mode = Mode.NONE;
-            operatorControlMode = false;
             activeCameraPos = null;
             activeCameraLabel = "Action Camera";
             extensionEditMode = false;
@@ -849,7 +817,6 @@ public final class ActionCameraClientState {
         if (!(blockEntity instanceof ActionCameraBlockEntity actionCamera)) {
             forceVanillaAudioForExit();
             mode = Mode.NONE;
-            operatorControlMode = false;
             activeCameraPos = null;
             activeCameraLabel = "Action Camera";
             extensionEditMode = false;

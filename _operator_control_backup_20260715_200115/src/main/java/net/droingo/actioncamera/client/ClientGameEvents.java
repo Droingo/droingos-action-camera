@@ -49,7 +49,6 @@ public final class ClientGameEvents {
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         handleViewKeybind();
-        handleOperatorControlKeybind();
         handleExtensionPoleKeybind();
         handleRenameCameraKeybind();
         handleEditOverlayModeKeybind();
@@ -142,45 +141,6 @@ public final class ClientGameEvents {
         event.getInput().right = false;
         event.getInput().jumping = false;
         event.getInput().shiftKeyDown = false;
-    }
-
-    private static void handleOperatorControlKeybind() {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        while (ActionCameraKeyMappings.TOGGLE_OPERATOR_CONTROL.consumeClick()) {
-            if (minecraft.player == null || minecraft.level == null) {
-                return;
-            }
-
-            if (!ActionCameraClientState.isViewingCamera()) {
-                return;
-            }
-
-            if (ActionCameraClientState.isOperatorControlMode()) {
-                ActionCameraClientState.setOperatorControlMode(false);
-
-                if (
-                        minecraft.screen == null
-                                || minecraft.screen instanceof ActionCameraViewerScreen
-                ) {
-                    ActionCameraViewerScreen.open();
-                }
-
-                return;
-            }
-
-            if (minecraft.screen instanceof ActionCameraViewerScreen viewer) {
-                viewer.enterOperatorControlMode();
-                return;
-            }
-
-            /*
-             * ReplayMod can own the current screen/timeline. Do not replace it;
-             * simply release Action Camera's viewer UI and allow normal player
-             * input while keeping the selected camera active.
-             */
-            ActionCameraClientState.setOperatorControlMode(true);
-        }
     }
 
     private static void handleViewKeybind() {

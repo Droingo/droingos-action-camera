@@ -1,7 +1,6 @@
 package net.droingo.actioncamera.client.gui;
 
 import net.droingo.actioncamera.client.ActionCameraClientState;
-import net.droingo.actioncamera.client.ActionCameraKeyMappings;
 import net.droingo.actioncamera.client.ClientGameEvents;
 import net.droingo.actioncamera.world.blockentity.ActionCameraBlockEntity;
 import net.minecraft.client.Minecraft;
@@ -42,7 +41,7 @@ public final class ActionCameraViewerScreen extends Screen {
     private EditBox searchBox;
     private Button sortButton;
     private Button dropdownButton;
-    private SortMode sortMode = SortMode.ALPHABETICAL;
+    private SortMode sortMode = SortMode.DISTANCE;
     private BlockPos selectedCameraPos;
     private int scrollPixels;
     private int refreshTicks;
@@ -53,7 +52,7 @@ public final class ActionCameraViewerScreen extends Screen {
     private boolean closing;
 
     private ActionCameraViewerMemory.Snapshot rememberedState =
-            new ActionCameraViewerMemory.Snapshot(null, null, 0, Set.of(), "ALPHABETICAL");
+            new ActionCameraViewerMemory.Snapshot(null, null, 0, Set.of());
 
     private ActionCameraViewerScreen() {
         super(Component.literal("Camera Viewer"));
@@ -86,12 +85,6 @@ public final class ActionCameraViewerScreen extends Screen {
         sortButton = addRenderableWidget(Button.builder(sortLabel(), button -> {
             sortMode = sortMode.next();
             button.setMessage(sortLabel());
-
-            ActionCameraViewerMemory.rememberSortMode(
-                    Minecraft.getInstance(),
-                    sortMode.name()
-            );
-
             scrollPixels = 0;
             rebuild();
         }).bounds(x + searchWidth + 5, y, 72, WIDGET_HEIGHT).build());
@@ -113,16 +106,6 @@ public final class ActionCameraViewerScreen extends Screen {
             selectedCameraPos = copy(rememberedState.lastSelectedCamera());
             scrollPixels = Math.max(0, rememberedState.scrollRows());
             expandedGroups.addAll(rememberedState.expandedGroups());
-
-            sortMode =
-                    "DISTANCE".equalsIgnoreCase(rememberedState.sortMode())
-                            ? SortMode.DISTANCE
-                            : SortMode.ALPHABETICAL;
-
-            if (sortButton != null) {
-                sortButton.setMessage(sortLabel());
-            }
-
             memoryRestored = true;
         }
 
@@ -132,22 +115,6 @@ public final class ActionCameraViewerScreen extends Screen {
             initialCameraChosen = true;
         }
         updateWidgetVisibility();
-    }
-
-    public void enterOperatorControlMode() {
-        if (closing || !ActionCameraClientState.isViewingCamera()) {
-            return;
-        }
-
-        closing = true;
-        remember();
-        ActionCameraClientState.setOperatorControlMode(true);
-
-        /*
-         * Close only this selector screen. The camera view itself remains
-         * active, so vanilla/ReplayMod/player controls can receive input.
-         */
-        Minecraft.getInstance().setScreen(null);
     }
 
     private void setExpanded(boolean value) {
@@ -200,7 +167,6 @@ public final class ActionCameraViewerScreen extends Screen {
         if (expandGroup) {
             expandedGroups.add(groupKey(camera.getCameraGroup()));
             ActionCameraViewerMemory.rememberExpandedGroups(minecraft, expandedGroups);
-        ActionCameraViewerMemory.rememberSortMode(minecraft, sortMode.name());
             rebuildRows();
         }
     }
@@ -332,23 +298,11 @@ public final class ActionCameraViewerScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        boolean typing = searchBox != null && searchBox.isFocused();
-
-        if (
-                !typing
-                        && ActionCameraKeyMappings.TOGGLE_OPERATOR_CONTROL.matches(
-                        keyCode,
-                        scanCode
-                )
-        ) {
-            enterOperatorControlMode();
-            return true;
-        }
-
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             exitViewer();
             return true;
         }
+        boolean typing = searchBox != null && searchBox.isFocused();
         if (!typing && (keyCode == GLFW.GLFW_KEY_LEFT_SHIFT || keyCode == GLFW.GLFW_KEY_RIGHT_SHIFT)) {
             exitViewer();
             return true;
@@ -361,13 +315,7 @@ public final class ActionCameraViewerScreen extends Screen {
     @Override
     public void removed() {
         remember();
-        if (
-                !closing
-                        && ActionCameraClientState.isViewingCamera()
-                        && !ActionCameraClientState.isOperatorControlMode()
-        ) {
-            ActionCameraClientState.stopViewing();
-        }
+        if (!closing && ActionCameraClientState.isViewingCamera()) ActionCameraClientState.stopViewing();
         super.removed();
     }
 
@@ -393,7 +341,6 @@ public final class ActionCameraViewerScreen extends Screen {
         if (selectedCameraPos != null) ActionCameraViewerMemory.rememberSelectedCamera(minecraft, selectedCameraPos);
         ActionCameraViewerMemory.rememberScrollRows(minecraft, scrollPixels);
         ActionCameraViewerMemory.rememberExpandedGroups(minecraft, expandedGroups);
-        ActionCameraViewerMemory.rememberSortMode(minecraft, sortMode.name());
     }
 
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {}
